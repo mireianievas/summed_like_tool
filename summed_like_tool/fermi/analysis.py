@@ -11,8 +11,8 @@ from gammapy.modeling.models import (
     create_fermi_isotropic_diffuse_model
 )
 
-from files import Files
-from utils.plotting import new_viridis
+from .files import Files
+from ..utils.plotting import new_viridis
 #self.lat_bute = Table.read(self.lat_bute_file,format='ascii')
 #self.lat_ebin = Table.read(self.lat_ebin_file,format='ascii')
 
@@ -30,6 +30,11 @@ class InstrumentResponse(Files):
             filename=self.iso_f, 
             interp_kwargs={"fill_value": None}
         )
+    def read_irfs(self):
+        self.read_exposure()
+        self.read_psf()
+        self.read_energy_dispersion()
+        self.read_diffuse_background()
 
 class EnergyAxes(InstrumentResponse):
      def set_energy_axes(self):
@@ -98,4 +103,5 @@ class Events(EnergyAxes):
         return(f)
 
 class Analysis(Events,EnergyMatrix):
-    def 
+    pass
+    #def 

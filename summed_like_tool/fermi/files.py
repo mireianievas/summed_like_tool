@@ -1,9 +1,10 @@
 from glob import glob
-from logging import Loggin
+import logging
 
 class Files(object):
-    def __init__(self,lat_path,srcmodel):
+    def __init__(self,lat_path,aux_path,srcmodel):
         self.path  = lat_path
+        self.auxpath = aux_path
         self.model = srcmodel
         self._set_logging()
     
@@ -18,8 +19,8 @@ class Files(object):
         self.xml_files    = glob(f"{self.path}/*_out.xml")
         self.expmap_files = glob(f"{self.path}/*_BinnedMap.fits*")
         self.psf_files    = glob(f"{self.path}/*_psf.fits*")
-        self.diffgal_files  = glob(f"{self.path}/gll_iem_v07.fits*")
-        self.iso_files    = glob(f"{self.path}/iso_P8R3_SOURCE_V3_*.txt")
+        self.diffgal_files  = glob(f"{self.auxpath}/gll_iem_v07.fits*")
+        self.iso_files    = glob(f"{self.auxpath}/iso_P8R3_SOURCE_V3_*.txt")
     
     def discover_spectra_result(self):
         self.lat_spectra  = glob(f"{self.path}/Spectrum/SED*{self.model}*.dat")
