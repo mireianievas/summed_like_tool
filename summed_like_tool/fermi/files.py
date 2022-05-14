@@ -12,20 +12,20 @@ class Files(object):
         self.log = logging.getLogger(__name__)     
     
     def discover_files(self):
-        self.events_files = glob(f"{self.path}/*LAT_Analysis_*_MkTime.fits*")
-        self.edrm_files   = glob(f"{self.path}/*LAT_Analysis_*_{1}_*eDRM.fits*")
+        self.events_files = glob(f"{self.path}/*_MkTime.fits*")
+        self.edrm_files   = glob(f"{self.path}/*{self.model}_*eDRM.fits*")
         #xml_files    = glob(f"{self.path}/*{self.model}_model*.xml")
         #xml_final    = glob(f"{self.path}/*{self.model}*_out.xml")[0]
         self.xml_files    = glob(f"{self.path}/*_out.xml")
         self.expmap_files = glob(f"{self.path}/*_BinnedMap.fits*")
         self.psf_files    = glob(f"{self.path}/*_psf.fits*")
-        self.diffgal_files  = glob(f"{self.auxpath}/gll_iem_v07.fits*")
+        self.diffgal_files = glob(f"{self.auxpath}/gll_iem_v07.fits*")
         self.iso_files    = glob(f"{self.auxpath}/iso_P8R3_SOURCE_V3_*.txt")
     
     def discover_spectra_result(self):
         self.lat_spectra  = glob(f"{self.path}/Spectrum/SED*{self.model}*.dat")
-        self.lat_bute_file = [K for K in lat_spectra if 'cov' not in K and 'Ebin' not in K]
-        self.lat_ebin_file = [K for K in lat_spectra if 'cov' not in K and 'Ebin' in K]
+        self.lat_bute_file = [K for K in self.lat_spectra if 'cov' not in K and 'Ebin' not in K]
+        self.lat_ebin_file = [K for K in self.lat_spectra if 'cov' not in K and 'Ebin' in K]
     
     def print_files(self):
         self.log.info('## Event files')
@@ -46,11 +46,11 @@ class Files(object):
     def select_unique_files(self,key):
         varlist = ['events_files',
                    'edrm_files',
-                   'xml_files',
                    'expmap_files',
                    'psf_files',
                    'iso_files',
-                   'diffgal_files']
+                   #'diffgal_files'
+                   ]
         for _v in varlist:
             try:
                 filtered = [K for K in getattr(self,_v) if key in K]
@@ -61,6 +61,9 @@ class Files(object):
                 raise
             else:
                 setattr(self,_v.replace('_files','_f'),filtered[0])
+        
+        self.xml_f     = self.xml_files[0]
+        self.diffgal_f = self.diffgal_files[0]
         
     
         

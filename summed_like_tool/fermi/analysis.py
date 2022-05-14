@@ -8,7 +8,10 @@ from gammapy.irf import EDispKernel,PSFMap
 from gammapy.maps import MapAxis,Map
 from gammapy.data import EventList
 from gammapy.modeling.models import (
-    create_fermi_isotropic_diffuse_model
+    SkyModel,
+    TemplateSpatialModel,
+    PowerLawNormSpectralModel,
+    create_fermi_isotropic_diffuse_model,
 )
 
 from .files import Files
@@ -21,7 +24,7 @@ class InstrumentResponse(Files):
     def read_exposure(self):
         self.exposure  = Map.read(self.expmap_f)
     def read_psf(self):
-        self.psf       = PSFMap.read(psf_f,format='gtpsf')
+        self.psf       = PSFMap.read(self.psf_f,format='gtpsf')
     def read_energy_dispersion(self):
         self.drmap = pyfits.open(self.edrm_f)
     def read_diffuse_background(self):
@@ -103,5 +106,45 @@ class Events(EnergyAxes):
         return(f)
 
 class Analysis(Events,EnergyMatrix):
-    pass
+    def diffuse_background_models(self):
+        
+        # Doing a cutout may improve fitting speed.
+        self.diffuse_cutout = self.diffgalac.cutout(self.countsmap.geom.center_skydir,
+                                                    self.countsmap.geom.width[0])
+        
+        self.template_diffuse = TemplateSpatialModel(
+            self.diffuse_cutout, normalize=False
+        )
+        
+        self.diffgalac_cutout = SkyModel(
+            spectral_model=PowerLawNormSpectralModel(),
+            spatial_model=self.template_diffuse,
+            name="diffuse-iem",
+        )
+        
+    def plot_diffuse_models(self):
+        F = plt.figure(figsize=(4,3),dpi=150)
+        plt.loglog()
+        
+        # Exposure varies very little with energy at these high energies
+        energy = np.geomspace(0.1 * u.GeV, 1 * u.TeV, 20)
+        dnde = self.template_diffuse.map.interp_by_coord(
+            {"skycoord": self.src_pos, "energy_true": energy},
+            method="linear",
+            fill_value=None,
+        )*u.Unit("1/(cm2*s*MeV*sr)")
+        
+        plt.plot(energy, dnde*u.sr, 
+                 marker="*",
+                 ls='dotted',
+                 label='diffuse gal / sr')
+        
+        energy_range = [0.1, 2000] * u.GeV
+        self.diffiso.spectral_model.plot(energy_range, 
+                                        sed_type="dnde", 
+                                        label='diffuse iso');
+
+        plt.legend()
+        return(F)
+        
     #def 
