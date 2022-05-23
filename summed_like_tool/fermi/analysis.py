@@ -18,8 +18,11 @@ from gammapy.modeling.models import (
     Models,
     TemplateSpatialModel,
     PowerLawNormSpectralModel,
+    EBLAbsorptionNormSpectralModel,
     create_fermi_isotropic_diffuse_model,
 )
+
+from gammapy.modeling.models.core import DatasetModels
 
 from .skymodel import FermiSkyModel
 from .files import Files
@@ -43,9 +46,11 @@ class InstrumentResponse(Files):
         self.diffgalac = Map.read(self.diffgal_f)
         self.log.info("Reading isotropic diffuse")
         self.diffiso   = create_fermi_isotropic_diffuse_model(
-            filename=self.iso_f, 
+            filename=self.iso_f,
             interp_kwargs={"fill_value": None}
         )
+        self.diffiso._name = "{}-{}".format(self.diffiso.name,self.tag)
+        
     def read_irfs(self):
         self.read_exposure()
         self.read_psf()
@@ -123,8 +128,7 @@ class Events(EnergyAxes):
         axes.grid(lw=0.5,color='white',alpha=0.5,ls='dotted')
         #return(f)
 
-class Analysis(Events,EnergyMatrix):
-    
+class FermiAnalysis(Events,EnergyMatrix):
     def set_targetname(self,targetname):
         self.targetname = targetname
     
@@ -222,12 +226,22 @@ class Analysis(Events,EnergyMatrix):
         edisp = EDispMap.from_diagonal_response(energy_axis_true=e_true)
         edisp_map = edisp.edisp_map
     
+    def set_ebl_absorption_from_model(self,ebl_absorption=None):
+        self.ebl_absorption = ebl_absorption
+    
+    def set_ebl_absorption_from_redshift(self,redshift,model=None):
+        if model == None:
+            model = 'dominguez'
+        
+        self.ebl_absorption = EBLAbsorptionNormSpectralModel.read_builtin(model, redshift=redshift)
+    
     def create_skymodel(self):
         self.log.info("Creating full skymodel")
         self.SkyModel = FermiSkyModel(self.xml_f)
         self.SkyModel.set_target_name(self.targetname)
         self.SkyModel.set_galdiffuse(self.diffuse_cutout)
         self.SkyModel.set_isodiffuse(self.diffiso)
+        self.SkyModel.set_ebl_absorption(self.ebl_absorption)
         self.SkyModel.create_full_skymodel()
 
     def create_dataset(self):
@@ -242,10 +256,10 @@ class Analysis(Events,EnergyMatrix):
             psf=self.psf, 
             edisp=EDispKernelMap.from_edisp_kernel(self.edisp_interp_kernel),
             mask_safe=mask_safe,
-            name='Fermi-LAT'
+            name='Fermi-LAT_{}'.format(self.unique_name)
         )
         
-    def gen_analysis(self):
+    def gen_analysis(self,targetname,ebl_absorption=None,redshift=None,ebl_model=None):
         self.read_irfs()
         self.set_energy_axes()
         self.energy_dispersion_matrix()
@@ -260,6 +274,25 @@ class Analysis(Events,EnergyMatrix):
         self.plot_exposure_interpolate()
         self.set_edisp_interpolator()
         self.set_targetname(targetname)
+        if ebl_absorption != None:
+            self.set_ebl_absorption_from_model(ebl_absorption)
+        elif redshift != None:
+            self.set_ebl_absorption_from_redshift(redshift,ebl_model)
         self.create_skymodel()
         self.create_dataset()
+        
+    def link_parameters_to_analysis(self,Analysis):
+        self.log.info("Linking parameters to target Analysis object")
+        NewDatasetModel = []
+        for k,model in enumerate(Analysis.dataset.models):
+            if 'fermi-diffuse-iso' in model.name:
+                # Link parameters of the second component only, 
+                # the first one is the shape of the ISO which depends on event type.
+                self.dataset.models[k].spectral_model.model2 = Analysis.dataset.models[k].spectral_model.model2
+                NewDatasetModel.append(self.dataset.models[k])
+            else:
+                # Link the entire model
+                NewDatasetModel.append(Analysis.dataset.models[k])
+
+        self.dataset.models = DatasetModels(NewDatasetModel)
         

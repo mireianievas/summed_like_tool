@@ -45,6 +45,7 @@ class Files(object):
         self.log.info(self.lat_ebin_file)
         
     def select_unique_files(self,key):
+        self.unique_name = key
         varlist = ['events_files',
                    'edrm_files',
                    'expmap_files',
@@ -65,6 +66,25 @@ class Files(object):
         
         self.xml_f     = self.xml_files[0]
         self.diffgal_f = self.diffgal_files[0]
+    
+    def print_selected_files(self):
+        varlist = ['events_f',
+                   'edrm_f',
+                   'expmap_f',
+                   'psf_f',
+                   'iso_f',
+                   'diffgal_f',
+                   'xml_f'
+                   ]
+
+        for _v in varlist:
+            self.log.info(getattr(self,_v))
+    
+    def prepare_files(self,key):
+        self.tag = key
+        self.discover_files()
+        self.discover_spectra_result()
+        self.select_unique_files(key)
         
     
         
