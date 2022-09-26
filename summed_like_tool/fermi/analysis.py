@@ -11,7 +11,8 @@ from gammapy.irf import (
     EDispMap,
     EDispKernelMap,
 )
-from gammapy.maps import MapAxis,Map
+
+from gammapy.maps import MapAxis,Map,WcsGeom,RegionGeom
 from gammapy.data import EventList
 from gammapy.modeling.models import (
     SkyModel,
@@ -85,18 +86,27 @@ class Events(EnergyAxes):
     def load_events(self):
         self.log.info("Loading events")
         # Create a local file (important if gzipped, as sometimes it fails to read)
-        with gzip.open(self.events_f) as gzfile:
-            with open("temp_events.fits", "wb") as f:
-                f.write(gzip.decompress(gzfile.read()))        
-    
-        #eventfits = read_fits_gz(event_f)
-        self.eventfits = pyfits.open("temp_events.fits")
-        self.events    = EventList.read("temp_events.fits")
+        try:
+            with gzip.open(self.events_f) as gzfile:
+                with open("temp_events.fits", "wb") as f:
+                    f.write(gzip.decompress(gzfile.read()))        
+
+            #eventfits = read_fits_gz(event_f)
+            self.eventfits = pyfits.open("temp_events.fits")
+            self.events    = EventList.read("temp_events.fits")
+        except:
+            self.eventfits = pyfits.open(self.events_f)
+            self.events    = EventList.read(self.events_f)
     
     def get_src_skycoord(self):
         self.log.info("Loading sky coordinates")
-        dsval2 = self.eventfits[1].header['DSVAL2']
-        ra,dec = [float(k) for k in dsval2.split("(")[1].split(",")[0:2]]
+        try:
+            dsval2 = self.eventfits[1].header['DSVAL2']
+            ra,dec = [float(k) for k in dsval2.split("(")[1].split(",")[0:2]]
+        except IndexError:
+            history = str(self.eventfits[1].header['HISTORY'])
+            ra,dec = history.split("angsep(RA,DEC,")[1].replace("\n","").split(")")[0].split(",")
+            
         self.src_pos = SkyCoord(ra, dec, unit="deg", frame="fk5")
         
     def counts_map(self):
@@ -126,6 +136,8 @@ class Events(EnergyAxes):
                                                     cmap=new_viridis())
 
         axes.grid(lw=0.5,color='white',alpha=0.5,ls='dotted')
+        #self.CountsMapFigure = f
+        #self.CountsMapAxes = axes
         #return(f)
 
 class FermiAnalysis(Events,EnergyMatrix):
@@ -243,12 +255,57 @@ class FermiAnalysis(Events,EnergyMatrix):
         self.SkyModel.set_isodiffuse(self.diffiso)
         self.SkyModel.set_ebl_absorption(self.ebl_absorption)
         self.SkyModel.create_full_skymodel()
+        
+    def add_source_to_exclusion_region(self,src=None,radius=0.1*u.deg,reset=False):
+        
+        try:
+            self.exclusion_regions
+            assert(reset==False)
+        except:
+            self.exclusion_regions = []
+        
+        if src != None:
+            if isinstance(src,str):
+                exclusion_region = CircleSkyRegion(
+                    center=SkyCoord.from_name("Crab Nebula", frame="galactic"),
+                    radius=radius,
+                )
+            elif isinstance(src,SkyCoord):
+                exclusion_region = CircleSkyRegion(
+                    center=src.galactic,
+                    radius=radius,
+                )
+            self.exclusion_regions.append(exclusion_region)
+            
+    def add_exclusion_region(self,region):
+        try:
+            self.exclusion_regions
+            assert(reset==False)
+        except:
+            self.exclusion_regions = []
+        self.exclusion_regions.append(region)
+    
+    def create_exclusion_mask(self):
+        skydir = self.src_pos.galactic
+        excluded_geom = self.countsmap.geom.copy()
+        if len(self.exclusion_regions) == 0:
+            self.log.info("Creating empty/dummy exclusion region")
+            pos = SkyCoord(0,90,unit='deg')
+            exclusion_region = CircleSkyRegion(pos,0.00001*u.deg)
+            self.exclusion_mask =~ excluded_geom.region_mask([exclusion_region])
+        else:
+            self.log.info("Creating exclusion region")
+            self.exclusion_mask =~ excluded_geom.region_mask(self.exclusion_regions)
 
     def create_dataset(self):
         self.log.info("Creating Mapdataset (self.dataset)")
-        mask_bool = np.zeros(self.countsmap.geom.data_shape).astype('bool')
-        mask_safe = Map.from_geom(self.countsmap.geom, mask_bool)
-        mask_safe.data = np.asarray(mask_safe.data==0,dtype=bool)
+        try:
+            mask_safe = self.exclusion_mask
+        except:
+            mask_bool = np.zeros(self.countsmap.geom.data_shape).astype('bool')
+            mask_safe = Map.from_geom(self.countsmap.geom, mask_bool)
+            mask_safe.data = np.asarray(mask_safe.data==0,dtype=bool)
+        
         self.dataset = MapDataset(
             models=Models(self.SkyModel.list_sources), 
             counts=self.countsmap, 

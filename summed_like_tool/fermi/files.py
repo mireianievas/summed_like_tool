@@ -64,7 +64,7 @@ class Files(object):
             else:
                 setattr(self,_v.replace('_files','_f'),filtered[0])
         
-        self.xml_f     = self.xml_files[0]
+        self.xml_f     = [f for f in self.xml_files if self.model in f][0]
         self.diffgal_f = self.diffgal_files[0]
     
     def print_selected_files(self):

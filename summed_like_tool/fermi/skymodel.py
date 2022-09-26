@@ -12,6 +12,8 @@ from gammapy.modeling.models import (
     PowerLawSpectralModel,
     LogParabolaSpectralModel,
     ExpCutoffPowerLawSpectralModel,
+    SuperExpCutoffPowerLaw4FGLSpectralModel,
+    SuperExpCutoffPowerLaw4FGLDR3SpectralModel,
     PointSpatialModel,
     SkyModel,
     TemplateSpatialModel,
@@ -33,6 +35,10 @@ class FermiSkyModel(object):
         
     def set_isodiffuse(self,isodiffuse):
         self.isodiffuse = isodiffuse
+        self.isodiffuse.spectral_model.model1.parameters[0].min = 0.001
+        self.isodiffuse.spectral_model.model1.parameters[0].max = 10
+        self.isodiffuse.spectral_model.model2.parameters[0].min = 0
+        self.isodiffuse.spectral_model.model2.parameters[0].max = 10 
     
     def set_galdiffuse(self,galdiffuse):
         self.galdiffuse = galdiffuse
@@ -52,15 +58,25 @@ class FermiSkyModel(object):
         return(P)
     
     @staticmethod
-    def index(var,name='index',is_src_target=False):
+    def index(var,name='index',keepsign=False,is_src_target=False):
         P        = Parameter(name=name, value=0)
-        if name == 'index':
+        if name == 'index' and not keepsign:
             Sign = -1
         else:
             Sign = +1
         P.value  = Sign*float(var['@value'])
         P.min    = Sign*float(var['@min'])
         P.max    = Sign*float(var['@max'])
+        P.frozen = bool(var['@free']=='0') and not is_src_target
+        return(P)
+    
+    @staticmethod
+    def lambda_(var,name='lambda_',is_src_target=False):
+        P        = Parameter(name=name, value=0)
+        P.value  = 1./float(var['@value'])
+        P.min    = 1./float(var['@max'])
+        P.max    = 1./float(var['@min'])
+        P.unit   = u.Unit("1/(MeV)")
         P.frozen = bool(var['@free']=='0') and not is_src_target
         return(P)
     
@@ -80,6 +96,13 @@ class FermiSkyModel(object):
         model.index     = self.index(spectrum[1],name='index',is_src_target=is_src_target)
         model.reference = self.reference(spectrum[2],name='reference',is_src_target=is_src_target)
         return(model)
+    
+    def powerlaw_eblatten(self,spectrum,is_src_target=False):
+        model = PowerLawSpectralModel()
+        model.amplitude = self.amplitude(spectrum[0],name='amplitude',is_src_target=is_src_target)
+        model.index     = self.index(spectrum[1],name='index',keepsign=True,is_src_target=is_src_target)
+        model.reference = self.reference(spectrum[3],name='reference',is_src_target=is_src_target)
+        return(model)
         
     def logparabola(self,spectrum,is_src_target=False):
         model = LogParabolaSpectralModel()
@@ -94,8 +117,17 @@ class FermiSkyModel(object):
         model.amplitude = self.amplitude(spectrum[0],name='amplitude',is_src_target=is_src_target)
         model.index     = self.index(spectrum[1],name='index',is_src_target=is_src_target)
         model.reference = self.reference(spectrum[2],name='reference',is_src_target=is_src_target)
-        model.lambda_   = self.index(spectrum[3],name='lambda_',is_src_target=is_src_target)
+        model.lambda_   = self.lambda_(spectrum[3],name='lambda_',is_src_target=is_src_target)
         model.alpha     = self.index(spectrum[4],name='alpha',is_src_target=is_src_target)
+        return(model)
+    
+    def plexpcutoff4(self,spectrum,is_src_target=False):
+        model = SuperExpCutoffPowerLaw4FGLDR3SpectralModel()
+        model.amplitude = self.amplitude(spectrum[0],name='amplitude',is_src_target=is_src_target)
+        model.index_1   = self.index(spectrum[1],name='index_1',is_src_target=is_src_target)
+        model.reference = self.reference(spectrum[2],name='reference',is_src_target=is_src_target)
+        model.expfactor = self.index(spectrum[3],name='expfactor',is_src_target=is_src_target)
+        model.index_2   = self.index(spectrum[4],name='index_2',is_src_target=is_src_target)
         return(model)
     
     def create_isodiffuse_skymodel(self):
@@ -141,11 +173,16 @@ class FermiSkyModel(object):
             
         if spectype == "PowerLaw":
             model = self.powerlaw(spectrum,is_src_target)
+        elif spectype == "LogParabola" and 'EblAtten' in src["spectrum"]["@type"]:
+            model = self.powerlaw_eblatten(spectrum,is_src_target)
         elif spectype == "LogParabola":
             model = self.logparabola(spectrum,is_src_target)
         elif spectype == 'PLSuperExpCutoff':
             model = self.plexpcutoff(spectrum,is_src_target)
-        
+        elif spectype == 'PLSuperExpCutoff4':
+            model = self.plexpcutoff4(spectrum,is_src_target)
+        else:
+            print(spectype)
         
         self.log.info(" -> {0}, {1}, frozen? {2}".format(srcname,spectype,str(model.amplitude.frozen)))
 
@@ -158,8 +195,8 @@ class FermiSkyModel(object):
             frame="fk5"
         )
         
-        spatial_model.freeze()
-                
+        spatial_model.freeze()        
+        
         source = SkyModel(
                 spectral_model=model,
                 spatial_model=spatial_model,
@@ -185,9 +222,7 @@ class FermiSkyModel(object):
             else:
                 source = self.create_point_source_skymodel(src)
             
-            self.list_sources.append(source)
-    
-    
+            self.list_sources.append(source)    
         
             
         
