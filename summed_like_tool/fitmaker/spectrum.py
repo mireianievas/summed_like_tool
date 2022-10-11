@@ -1,7 +1,6 @@
 import os
 import warnings
 import numpy as np
-import uproot
 import matplotlib.pyplot as plt
 import astropy.units as u
 from astropy.units import Quantity
@@ -222,6 +221,7 @@ class SpectralAnalysis(FitMaker):
         return(self.Fig)
     
     def plot_spectrum_fold(self,foldfile=None):
+        import uproot
         if not os.path.exists(foldfile):
             return None
         
