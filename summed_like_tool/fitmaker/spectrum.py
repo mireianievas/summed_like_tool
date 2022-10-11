@@ -103,8 +103,9 @@ class SpectralAnalysis(FitMaker):
             self.ebin_edges = ebin_edges
             
         if targetname != None:
-            self.target_model = self.get_target_source(targetname)
-        
+            #self.target_model = self.get_target_source(targetname)
+            self.set_target_source(targetname)
+            
         fpe = FluxPointsEstimator(energy_edges=self.ebin_edges, 
                                 source=self.target_model.name,
                                 n_sigma_ul=2,

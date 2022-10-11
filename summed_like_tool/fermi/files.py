@@ -25,7 +25,7 @@ class Files(object):
     
     def discover_spectra_result(self):
         self.lat_spectra  = glob(f"{self.path}/Spectrum/SED*{self.model}*.dat")
-        self.lat_bute_file = [K for K in self.lat_spectra if 'cov' not in K and 'Ebin' not in K]
+        self.lat_bute_file = [K for K in self.lat_spectra if 'cov' not in K and 'Ebin' not in K and 'ResData' not in K and 'fitpars' not in K]
         self.lat_ebin_file = [K for K in self.lat_spectra if 'cov' not in K and 'Ebin' in K]
     
     def print_files(self):
