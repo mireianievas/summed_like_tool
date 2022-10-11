@@ -40,9 +40,11 @@ class FitMaker(object):
     def setup_fit(self,*args,**kwargs):
         self.fit = Fit(*args,**kwargs)
     
-    def global_fit(self):
+    def global_fit(self,datasets=None):
         warnings.filterwarnings("ignore")
-        self.result = self.fit.run(datasets=self.datasets)
+        if datasets == None:
+            datasets = self.datasets
+        self.result = self.fit.run(datasets=datasets)
         warnings.filterwarnings("default")
     
     def fit_energy_bin(self,energy_true,energy_reco,data):
@@ -57,12 +59,15 @@ class FitMaker(object):
         return(self.fitBin,self.result)
     
     def set_target_source(self,targetname,dataset=None):
-        if dataset == None:
-            dataset = self.datasets[0]
-        
-        for S in dataset.models:
-            if S.name == targetname:
-                self.target_model = S
+        if dataset != None:
+            dataset = [dataset]
+        else:
+            dataset = self.datasets
+        for d in dataset:
+            for S in dataset.models:
+                if S.name == targetname:
+                    self.target_model = S
+                    return(None)
     
     def print_fit_result(self):
         print(self.result)
@@ -102,14 +107,16 @@ class SpectralAnalysis(FitMaker):
         
         if ebin_edges != None:
             self.ebin_edges = ebin_edges
-            
-        if targetname != None:
-            self.target_model = self.get_target_source(targetname)
+        
+        if targetname == None:
+            targetname = self.analyses[0].targetname
+            #self.set_target_source(self.analyses[0],dataset=self.analyses[0].dataset)
         
         fpe = FluxPointsEstimator(energy_edges=self.ebin_edges, 
                                 source=self.target_model.name,
                                 n_sigma_ul=2,
                                 selection_optional='all')
+                
         self.flux_points = fpe.run(datasets=datasets)
         warnings.filterwarnings("default")
         
@@ -165,12 +172,16 @@ class SpectralAnalysis(FitMaker):
         yerrp = ymean+yerrs
         yerrn = ymean-yerrs #10**(2*np.log10(ymean)-np.log10(yerrp))
 
+        # best-fit
         self.ax.plot(
             self.lat_bute['col1']*u.MeV,
             ymean*u.Unit("erg/(cm2*s)"),
             color='red',
+            lw=0.75,
+            mew=0.75,
             zorder=-10,
         )
+        # confidence band
         self.ax.fill_between(
             x=self.lat_bute['col1']*u.MeV,
             y1=yerrn*u.Unit("erg/(cm2*s)"),
@@ -181,6 +192,7 @@ class SpectralAnalysis(FitMaker):
             label='enrico/fermitools',
         )
 
+        # spectral points
         lat_ebin = Table(self.lat_ebin)
         isuplim = lat_ebin['col5']==0
         lat_ebin['col5'][isuplim] = lat_ebin['col4'][isuplim]*0.5
@@ -195,6 +207,8 @@ class SpectralAnalysis(FitMaker):
             ls='None',
             color='red',
             mfc='white',
+            lw=0.75,
+            mew=0.75,
             zorder=-10,
             uplims=isuplim
         )
@@ -234,6 +248,9 @@ class SpectralAnalysis(FitMaker):
             mfc='white',
             zorder=-10,
             label='MAGIC/Fold',
+            lw=0.75,
+            mew=0.75,
+            alpha=1,
             #uplims=isuplim
         )
         
