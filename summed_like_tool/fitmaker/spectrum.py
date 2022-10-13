@@ -111,8 +111,7 @@ class SpectralAnalysis(FitMaker):
             targetname = self.analyses[0].targetname
             #self.set_target_source(self.analyses[0],dataset=self.analyses[0].dataset)
             #self.set_target_source(targetname)
-        
-	fpe = FluxPointsEstimator(energy_edges=self.ebin_edges, 
+            fpe = FluxPointsEstimator(energy_edges=self.ebin_edges, 
                                 source=self.target_model.name,
                                 n_sigma_ul=2,
                                 selection_optional='all')
