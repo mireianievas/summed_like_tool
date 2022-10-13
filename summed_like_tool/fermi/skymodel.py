@@ -8,6 +8,8 @@ from gammapy.modeling import (
 
 import astropy.units as u
 
+from gammapy.maps import Map
+
 from gammapy.modeling.models import (
     PowerLawSpectralModel,
     LogParabolaSpectralModel,
@@ -21,8 +23,9 @@ from gammapy.modeling.models import (
 )
 
 class FermiSkyModel(object):
-    def __init__(self,xml_f):
+    def __init__(self,xml_f,auxpath):
         self.xml_f = xml_f
+        self.auxpath = auxpath
         self._set_logging()
         self.ebl_absorption = None
     
@@ -153,7 +156,7 @@ class FermiSkyModel(object):
         self.log.info(" -> {0}".format("Galactic diffuse"))
         return(source)
 
-    def create_point_source_skymodel(self,src):
+    def create_source_skymodel(self,src):
         srcname  = src["@name"]
         #srctype  = src["@type"]
         spectype = src["spectrum"]["@type"].split('EblAtten::')[-1]
@@ -188,12 +191,19 @@ class FermiSkyModel(object):
 
         if is_src_target and self.ebl_absorption != None:
             model = model*self.ebl_absorption
-        
-        spatial_model = PointSpatialModel(
-            lon_0="{} deg".format(spatialpars[0]["@value"]), 
-            lat_0="{} deg".format(spatialpars[1]["@value"]), 
-            frame="fk5"
-        )
+                
+        if src['spatialModel']['@type'] == 'SkyDirFunction':
+            spatial_model = PointSpatialModel(
+                lon_0="{} deg".format(spatialpars[0]["@value"]), 
+                lat_0="{} deg".format(spatialpars[1]["@value"]), 
+                frame="fk5"
+            )
+        elif src['spatialModel']['@type'] == 'SpatialMap':
+            filename = src['spatialModel']['@file'].split("/")[-1]
+            filepath = f'{self.auxpath}/Templates/{filename}'
+            m = Map.read(filepath)
+            m = m.copy(unit="sr^-1")
+            spatial_model = TemplateSpatialModel(m, filename=filepath)
         
         spatial_model.freeze()        
         
@@ -202,7 +212,7 @@ class FermiSkyModel(object):
                 spatial_model=spatial_model,
                 name=srcname,
         )
-        return(source)
+        return(source)        
     
     def create_full_skymodel(self):
         
@@ -220,7 +230,7 @@ class FermiSkyModel(object):
             elif srcname == 'GalDiffModel':
                 source = self.create_galdiffuse_skymodel()
             else:
-                source = self.create_point_source_skymodel(src)
+                source = self.create_source_skymodel(src)
             
             self.list_sources.append(source)    
         
