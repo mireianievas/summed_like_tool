@@ -269,7 +269,7 @@ class FermiAnalysis(Events, EnergyMatrix):
 
     def create_skymodel(self):
         self.log.info("Creating full skymodel")
-        self.SkyModel = FermiSkyModel(self.xml_f)
+        self.SkyModel = FermiSkyModel(self.xml_f,self.auxpath)
         self.SkyModel.set_target_name(self.targetname)
         self.SkyModel.set_galdiffuse(self.diffuse_cutout)
         self.SkyModel.set_isodiffuse(self.diffiso)

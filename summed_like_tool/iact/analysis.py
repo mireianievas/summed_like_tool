@@ -223,6 +223,12 @@ class Analysis1D(Observations, EnergyAxes):
 
                 self.region_finder.run(self.on_region, cen_pnt)
 
+                self.region_finder.run(self.on_region, cen_pnt)
+                
+                if obs.fixed_pointing_info.meta["OBS_MODE"] == "UNDETERMINED":
+                    self.log.warning("OBS_MODE for run {} is UNDETERMINED, wrong offset?".format(obs.obs_id))
+                    obs.fixed_pointing_info.meta["OBS_MODE"] = "WOBBLE"
+                
                 dataset = self.dataset_maker.run(
                     self.dataset_template.copy(name=str(obs.obs_id)), obs
                 )
