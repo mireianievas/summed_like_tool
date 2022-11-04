@@ -145,66 +145,87 @@ class SpectralAnalysis(FitMaker):
 
             self.fit_energy_bin()
 
-    def plot_spectrum(self):
-        self.Fig = plt.figure(dpi=150)
+    def plot_spectrum(self, ax=None, kwargs_fp=None, kwargs_m=None):
 
         energy_range = Quantity([self.ebin_edges[0], self.ebin_edges[-1]])
 
-        try:
-            self.ax = self.flux_points.plot(
-                sed_type="e2dnde", color="black", mfc="gray", marker="D"
-            )
-        except:  # AttributeError
-            self.ax = self.Fig.add_subplot(111)
+        if kwargs_fp is None:
+            kwargs_fp = {
+                "color": "black",
+                "mfc": "gray",
+                "marker": "D",
+                "label": "Flux points",
+            }
+        if kwargs_model is None:
+            kwargs_model = {
+                "color": "gray",
+                "label": "Best fit model",
+            }
+        self.flux_points.plot(ax=ax, sed_type="e2dnde", **kwargs_fp)
 
         spec = self.target_model.spectral_model
         spec.evaluate_error(energy_range)
-        spec.plot(
-            energy_bounds=energy_range, sed_type="e2dnde", ax=self.ax, color="gray"
-        )
+        spec.plot(ax=ax, energy_bounds=energy_range, sed_type="e2dnde", **kwargs_model)
+        kwargs_model.pop("label")
         spec.plot_error(
-            energy_bounds=energy_range, sed_type="e2dnde", ax=self.ax, label="gammapy"
+            ax=ax, energy_bounds=energy_range, sed_type="e2dnde", **kwargs_model
         )
+        return ax
 
-        # ax.set_ylim([4e-12,3e-10])
-        # ax.set_xlim([2e2,1.2e6])
-
-        self.ax.set_title(self.target_model.name)
-        self.ax.legend()
-
-    def plot_spectrum_enrico(self):
+    def plot_spectrum_enrico(
+        self, ax=None, kwargs_fp=None, kwargs_model=None, kwargs_model_err=None
+    ):
         ymean = self.lat_bute["col2"]
         yerrs = self.lat_bute["col3"]
 
         yerrp = ymean + yerrs
         yerrn = ymean - yerrs  # 10**(2*np.log10(ymean)-np.log10(yerrp))
 
-        # best-fit
-        self.ax.plot(
+        if kwargs_fp is None:
+            kwargs_fp = {
+                "marker": "o",
+                "ls": "None",
+                "color": "red",
+                "mfc": "white",
+                "lw": 0.75,
+                "mew": 0.75,
+                "zorder": -10,
+            }
+
+        if kwargs_model is None:
+            kwargs_model = {
+                "color": "red",
+                "lw": 0.75,
+                "mew": 0.75,
+                "zorder": -10,
+            }
+
+        if kwargs_model_err is None:
+            kwargs_model_err = kwargs_model.pop("mew")
+            kwargs_model_err["alpha"] = 0.2
+            kwargs_model_err["label"] = "enrico/fermitools"
+
+        # Best-Fit model
+        ax.plot(
             self.lat_bute["col1"] * u.MeV,
             ymean * u.Unit("erg/(cm2*s)"),
-            color="red",
-            lw=0.75,
-            mew=0.75,
-            zorder=-10,
+            **kwargs_model,
         )
         # confidence band
-        self.ax.fill_between(
+        ax.fill_between(
             x=self.lat_bute["col1"] * u.MeV,
             y1=yerrn * u.Unit("erg/(cm2*s)"),
             y2=yerrp * u.Unit("erg/(cm2*s)"),
-            color="red",
-            alpha=0.2,
-            zorder=-10,
-            label="enrico/fermitools",
+            **kwargs_model_err,
         )
 
         # spectral points
         lat_ebin = Table(self.lat_ebin)
         isuplim = lat_ebin["col5"] == 0
         lat_ebin["col5"][isuplim] = lat_ebin["col4"][isuplim] * 0.5
+        kwargs_fp["uplims"] = isuplim
 
-        self.ax.errorbar(
+        ax.errorbar(
             x=lat_ebin["col1"] * u.MeV,
             y=lat_ebin["col4"] * u.Unit("erg/(cm2*s)"),
             xerr=[
@@ -212,33 +233,36 @@ class SpectralAnalysis(FitMaker):
                 lat_ebin["col3"] * u.MeV - lat_ebin["col1"] * u.MeV,
             ],
             yerr=lat_ebin["col5"] * u.Unit("erg/(cm2*s)"),
-            marker="o",
-            ls="None",
-            color="red",
-            mfc="white",
-            lw=0.75,
-            mew=0.75,
-            zorder=-10,
-            uplims=isuplim,
+            **kwargs_fp,
         )
 
-        self.ax.set_ylim(
+        ax.set_ylim(
             [
                 min(self.lat_ebin["col4"] * u.Unit("erg/(cm2*s)")) * 0.2,
                 max(self.lat_ebin["col4"] * u.Unit("erg/(cm2*s)")) * 2,
             ]
         )
-        self.ax.set_xlim([self.ebin_edges[0] * 0.7, self.ebin_edges[-1] * 1.4])
 
-        self.ax.set_title(self.target_model.name)
-        self.ax.legend()
-        return self.Fig
+        return ax
 
-    def plot_spectrum_fold(self, foldfile=None):
+    def plot_spectrum_fold(self, ax=None, foldfile=None, kwargs=None):
         import uproot
 
         if not os.path.exists(foldfile):
             return None
+
+        if kwargs is None:
+            kwargs = {
+                "marker": "o",
+                "ls": "None",
+                "color": "C4",
+                "mfc": "white",
+                "zorder": -10,
+                "label": "MAGIC/Fold",
+                "lw": 0.75,
+                "mew": 0.75,
+                "alpha": 1,
+            }
 
         fold = uproot.open(foldfile)
         sed = fold["observed_sed"].tojson()
@@ -258,18 +282,7 @@ class SpectralAnalysis(FitMaker):
                 yerrlow * u.Unit("TeV/(cm2 * s)"),
                 yerrhigh * u.Unit("TeV/(cm2 * s)"),
             ],
-            marker="o",
-            ls="None",
-            color="C4",
-            mfc="white",
-            zorder=-10,
-            label="MAGIC/Fold",
-            lw=0.75,
-            mew=0.75,
-            alpha=1,
-            # uplims=isuplim
+            **kwargs,
         )
 
-        self.ax.legend()
-
-        return self.Fig
+        return ax

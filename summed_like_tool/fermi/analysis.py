@@ -1,9 +1,12 @@
 import gzip
 import numpy as np
 from matplotlib import pyplot as plt
+
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.io import fits as pyfits
+from regions import CircleSkyRegion
+
 from gammapy.datasets import MapDataset
 from gammapy.irf import (
     EDispKernel,
@@ -34,28 +37,40 @@ from ..utils.plotting import new_viridis
 
 
 class InstrumentResponse(Files):
+
     def read_exposure(self):
+
         self.log.info("Reading exposure")
+
         self.exposure = Map.read(self.expmap_f)
 
     def read_psf(self):
+
         self.log.info("Reading PSF")
+
         self.psf = PSFMap.read(self.psf_f, format="gtpsf")
 
     def read_energy_dispersion(self):
+
         self.log.info("Reading exposure")
+
         self.drmap = pyfits.open(self.edrm_f)
 
     def read_diffuse_background(self):
+
         self.log.info("Reading galactic diffuse")
+
         self.diffgalac = Map.read(self.diffgal_f)
+
         self.log.info("Reading isotropic diffuse")
+
         self.diffiso = create_fermi_isotropic_diffuse_model(
             filename=self.iso_f, interp_kwargs={"fill_value": None}
         )
         self.diffiso._name = "{}-{}".format(self.diffiso.name, self.tag)
 
     def read_irfs(self):
+
         self.read_exposure()
         self.read_psf()
         self.read_energy_dispersion()
@@ -63,32 +78,44 @@ class InstrumentResponse(Files):
 
 
 class EnergyAxes(InstrumentResponse):
+
     def set_energy_axes(self):
+
         self.log.info("Setting energy axes")
+
         energy_lo = self.drmap["DRM"].data["ENERG_LO"] * u.MeV
         energy_hi = self.drmap["DRM"].data["ENERG_HI"] * u.MeV
+
         self.energy_axis = MapAxis.from_energy_edges(np.append(energy_lo[0], energy_hi))
         self.energy_axis_true = self.energy_axis.copy(name="energy_true")
         # self.energy_edges = self.energy_axis.edges
 
 
 class EnergyMatrix(EnergyAxes):
+
     def energy_dispersion_matrix(self):
+
         self.log.info("Creating energy dispersion kernel")
+
         drm = self.drmap["DRM"].data["MATRIX"]
         drm_matrix = np.array(list(drm))
+
         self.edisp_kernel = EDispKernel(
             axes=[self.energy_axis_true, self.energy_axis], data=drm_matrix
         )
 
     def plot_energy_dispersion_matrix(self):
+
         print("Peek on original edisp kernel")
         return self.edisp_kernel.peek()
 
 
 class Events(EnergyAxes):
+
     def load_events(self):
+
         self.log.info("Loading events")
+
         # Create a local file (important if gzipped, as sometimes it fails to read)
         try:
             with gzip.open(self.events_f) as gzfile:
@@ -103,7 +130,9 @@ class Events(EnergyAxes):
             self.events = EventList.read(self.events_f)
 
     def get_src_skycoord(self):
+
         self.log.info("Loading sky coordinates")
+
         try:
             dsval2 = self.eventfits[1].header["DSVAL2"]
             ra, dec = [float(k) for k in dsval2.split("(")[1].split(",")[0:2]]
@@ -114,12 +143,14 @@ class Events(EnergyAxes):
                 .replace("\n", "")
                 .split(")")[0]
                 .split(",")
-            )
+            ) # This?
 
         self.src_pos = SkyCoord(ra, dec, unit="deg", frame="fk5")
 
     def counts_map(self):
+
         self.log.info("Creating counts map")
+
         self.countsmap = Map.create(
             skydir=self.src_pos,
             npix=(self.exposure.geom.npix[0][0], self.exposure.geom.npix[1][0]),
@@ -133,30 +164,31 @@ class Events(EnergyAxes):
             {"skycoord": self.events.radec, "energy": self.events.energy}
         )
 
-    def plot_counts_map(self):
-        f = plt.figure(dpi=120)
+    def plot_counts_map(self, ax=None, kwargs=None):
+
         percentiles = np.percentile(
             self.countsmap.sum_over_axes().smooth(1).data, [10, 99.9]
         )
-        # print(percentiles)
-        axes = (
-            self.countsmap.sum_over_axes()
-            .smooth(1.5)
-            .plot(
+        if kwargs is None:
+            kwargs = {
+               "cmap": new_viridis(),
+            }
+
+        self.countsmap.sum_over_axes().smooth(1.5).plot(
+                ax=ax,
                 stretch="sqrt",
                 vmin=percentiles[0],
                 vmax=percentiles[1],
-                cmap=new_viridis(),
-            )
+                **kwargs,
         )
+        
+        ## Different kwargs needed for this ?
+        ax.grid(lw=0.5, color="white", alpha=0.5, ls="dotted")
 
-        axes.grid(lw=0.5, color="white", alpha=0.5, ls="dotted")
-        # self.CountsMapFigure = f
-        # self.CountsMapAxes = axes
-        # return(f)
-
+        return ax
 
 class FermiAnalysis(Events, EnergyMatrix):
+
     def set_targetname(self, targetname):
         self.targetname = targetname
 
@@ -179,9 +211,16 @@ class FermiAnalysis(Events, EnergyMatrix):
             name="diffuse-iem",
         )
 
-    def plot_diffuse_models(self):
-        F = plt.figure(figsize=(4, 3), dpi=150)
-        plt.loglog()
+    def plot_diffuse_models(self, ax=None, kwargs=None):
+
+        ax.loglog()
+
+        if kwargs is None:
+            kwargs = {
+                "marker": "*",
+                "ls": "dotted", 
+                "label": "diffuse gal / sr"
+            }
 
         # Exposure varies very little with energy at these high energies
         energy = np.geomspace(0.1 * u.GeV, 1 * u.TeV, 20)
@@ -191,44 +230,59 @@ class FermiAnalysis(Events, EnergyMatrix):
             fill_value=None,
         ) * u.Unit("1/(cm2*s*MeV*sr)")
 
-        plt.plot(energy, dnde * u.sr, marker="*", ls="dotted", label="diffuse gal / sr")
+        plt.plot(
+            energy, 
+            dnde * u.sr, 
+            ax=ax,
+            **kwargs,
+        )
 
         energy_range = [0.1, 2000] * u.GeV
         self.diffiso.spectral_model.plot(
-            energy_range, sed_type="dnde", label="diffuse iso"
+            energy_range, 
+            sed_type="dnde", 
+            ax=ax,
+            label="diffuse iso",
         )
 
-        plt.legend()
-        # return(F)
+        return ax
 
     def plot_psf_containment(self):
+
         f = plt.figure(figsize=(6.5, 3), dpi=130)
+
         ax1 = f.add_subplot(121)
         ax2 = f.add_subplot(122)
+
         self.psf.plot_psf_vs_rad(ax=ax1)
         self.psf.plot_containment_radius_vs_energy(ax=ax2, linewidth=2)
+
         plt.tight_layout()
 
     def plot_exposure_interpolate(self):
-        self.exposure_interp = self.exposure.interp_to_geom(
-            self.countsmap.geom.as_energy_true
-        )
+
         f = plt.figure(figsize=(10, 3))
+
         ax1 = f.add_subplot(121)
         ax2 = f.add_subplot(122)
+
         self.exposure.slice_by_idx({"energy_true": 3}).plot(ax=ax1, add_cbar=True)
         self.exposure_interp.slice_by_idx({"energy_true": 0}).plot(
             ax=ax2, add_cbar=True
         )
 
     def set_edisp_interpolator(self):
+
         drmap = pyfits.open(self.edrm_f)
+
         energy_lo = drmap["DRM"].data["ENERG_LO"] * u.MeV
         energy_hi = drmap["DRM"].data["ENERG_HI"] * u.MeV
         drm = drmap["DRM"].data["MATRIX"]
         drm_matrix = np.array(list(drm))
+
         drm_eaxis = MapAxis.from_energy_edges(np.append(energy_lo[0], energy_hi))
         drm_eaxis_true = drm_eaxis.copy(name="energy_true")
+
         edisp_kernel = EDispKernel(axes=[drm_eaxis_true, drm_eaxis], data=drm_matrix)
 
         axis_reco = MapAxis.from_edges(
@@ -251,15 +305,18 @@ class FermiAnalysis(Events, EnergyMatrix):
         )
 
     def set_fake_edisp_interpolator(self):
+
         # For fake diagonal response (in case no EDISP is available)
         e_true = self.exposure_interp.geom.axes["energy_true"]
         edisp = EDispMap.from_diagonal_response(energy_axis_true=e_true)
         edisp_map = edisp.edisp_map
 
     def set_ebl_absorption_from_model(self, ebl_absorption=None):
+
         self.ebl_absorption = ebl_absorption
 
     def set_ebl_absorption_from_redshift(self, redshift, model=None):
+
         if model == None:
             model = "dominguez"
 
@@ -268,7 +325,9 @@ class FermiAnalysis(Events, EnergyMatrix):
         )
 
     def create_skymodel(self):
+
         self.log.info("Creating full skymodel")
+
         self.SkyModel = FermiSkyModel(self.xml_f,self.auxpath)
         self.SkyModel.set_target_name(self.targetname)
         self.SkyModel.set_galdiffuse(self.diffuse_cutout)
@@ -297,17 +356,20 @@ class FermiAnalysis(Events, EnergyMatrix):
                 )
             self.exclusion_regions.append(exclusion_region)
 
-    def add_exclusion_region(self, region):
+    def add_exclusion_region(self, region, reset=False):
+
         try:
             self.exclusion_regions
             assert reset == False
         except:
             self.exclusion_regions = []
+
         self.exclusion_regions.append(region)
 
     def create_exclusion_mask(self):
-        skydir = self.src_pos.galactic
+
         excluded_geom = self.countsmap.geom.copy()
+
         if len(self.exclusion_regions) == 0:
             self.log.info("Creating empty/dummy exclusion region")
             pos = SkyCoord(0, 90, unit="deg")
@@ -318,7 +380,9 @@ class FermiAnalysis(Events, EnergyMatrix):
             self.exclusion_mask = ~excluded_geom.region_mask(self.exclusion_regions)
 
     def create_dataset(self):
+
         self.log.info("Creating Mapdataset (self.dataset)")
+
         try:
             mask_safe = self.exclusion_mask
         except:
@@ -339,23 +403,33 @@ class FermiAnalysis(Events, EnergyMatrix):
     def gen_analysis(
         self, targetname, ebl_absorption=None, redshift=None, ebl_model=None
     ):
+
         self.read_irfs()
         self.set_energy_axes()
         self.energy_dispersion_matrix()
+
         self.load_events()
         self.get_src_skycoord()
+
         self.counts_map()
         self.diffuse_background_models()
+
         self.set_edisp_interpolator()
+        self.exposure_interp = self.exposure.interp_to_geom(
+            self.countsmap.geom.as_energy_true
+        )
         self.set_targetname(targetname)
+        
         if ebl_absorption != None:
             self.set_ebl_absorption_from_model(ebl_absorption)
         elif redshift != None:
             self.set_ebl_absorption_from_redshift(redshift, ebl_model)
+        
         self.create_skymodel()
         self.create_dataset()
 
     def gen_plots(self):
+
         self.plot_energy_dispersion_matrix()
         self.plot_counts_map()
         self.plot_diffuse_models()
@@ -363,15 +437,19 @@ class FermiAnalysis(Events, EnergyMatrix):
         self.plot_exposure_interpolate()
 
     def link_parameters_to_analysis(self, Analysis):
+
         self.log.info("Linking parameters to target Analysis object")
         NewDatasetModel = []
+
         for k, model in enumerate(Analysis.dataset.models):
             if "fermi-diffuse-iso" in model.name:
                 # Link parameters of the second component only,
                 # the first one is the shape of the ISO which depends on event type.
+
                 self.dataset.models[k].spectral_model.model2 = Analysis.dataset.models[
                     k
                 ].spectral_model.model2
+
                 NewDatasetModel.append(self.dataset.models[k])
             else:
                 # Link the entire model
