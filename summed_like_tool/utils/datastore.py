@@ -3,6 +3,7 @@ from pathlib import Path
 from astropy.io import fits
 from astropy.table import Table
 
+
 def make_obs_index(path):
     """generate the OBS index for the DL3 files in path"""
     files = glob.glob(f"{path}/*DL3*.fits")
@@ -72,7 +73,7 @@ def make_hdu_index(path):
         "EFFECTIVE AREA": "aeff_2d",
         "ENERGY DISPERSION": "edisp_2d",
         "POINT SPREAD FUNCTION": "psf_table",
-        "RAD_MAX": "rad_max_2d"
+        "RAD_MAX": "rad_max_2d",
     }
     for _file in files:
         with fits.open(_file) as hdus:
@@ -85,7 +86,14 @@ def make_hdu_index(path):
                 hdu_names.append(hdu.name)
     hdu_table = Table(
         [obs_ids, hdu_types, hdu_classes, file_dirs, file_names, hdu_names],
-        names=("OBS_ID", "HDU_TYPE", "HDU_CLASS", "FILE_DIR", "FILE_NAME", "HDU_NAME",),
+        names=(
+            "OBS_ID",
+            "HDU_TYPE",
+            "HDU_CLASS",
+            "FILE_DIR",
+            "FILE_NAME",
+            "HDU_NAME",
+        ),
         dtype=(">i8", "S30", "S30", "S100", "S50", "S30"),
         meta={
             "name": "OBS_INDEX",
@@ -100,6 +108,7 @@ def make_hdu_index(path):
 
     hdu_file = f"{path}/hdu-index.fits.gz"
     hdu_table.write(hdu_file, overwrite=True)
+
 
 def make_obs_hdu_index(path):
     """generate OBS and HDU index for the DL3 files in a directory"""
