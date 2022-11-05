@@ -37,7 +37,6 @@ from ..utils.plotting import new_viridis
 
 
 class InstrumentResponse(Files):
-
     def read_exposure(self):
 
         self.log.info("Reading exposure")
@@ -78,7 +77,6 @@ class InstrumentResponse(Files):
 
 
 class EnergyAxes(InstrumentResponse):
-
     def set_energy_axes(self):
 
         self.log.info("Setting energy axes")
@@ -92,7 +90,6 @@ class EnergyAxes(InstrumentResponse):
 
 
 class EnergyMatrix(EnergyAxes):
-
     def energy_dispersion_matrix(self):
 
         self.log.info("Creating energy dispersion kernel")
@@ -111,7 +108,6 @@ class EnergyMatrix(EnergyAxes):
 
 
 class Events(EnergyAxes):
-
     def load_events(self):
 
         self.log.info("Loading events")
@@ -143,7 +139,7 @@ class Events(EnergyAxes):
                 .replace("\n", "")
                 .split(")")[0]
                 .split(",")
-            ) # This?
+            )  # This?
 
         self.src_pos = SkyCoord(ra, dec, unit="deg", frame="fk5")
 
@@ -171,24 +167,24 @@ class Events(EnergyAxes):
         )
         if kwargs is None:
             kwargs = {
-               "cmap": new_viridis(),
+                "cmap": new_viridis(),
             }
 
         self.countsmap.sum_over_axes().smooth(1.5).plot(
-                ax=ax,
-                stretch="sqrt",
-                vmin=percentiles[0],
-                vmax=percentiles[1],
-                **kwargs,
+            ax=ax,
+            stretch="sqrt",
+            vmin=percentiles[0],
+            vmax=percentiles[1],
+            **kwargs,
         )
-        
+
         ## Different kwargs needed for this ?
         ax.grid(lw=0.5, color="white", alpha=0.5, ls="dotted")
 
         return ax
 
-class FermiAnalysis(Events, EnergyMatrix):
 
+class FermiAnalysis(Events, EnergyMatrix):
     def set_targetname(self, targetname):
         self.targetname = targetname
 
@@ -216,11 +212,7 @@ class FermiAnalysis(Events, EnergyMatrix):
         ax.loglog()
 
         if kwargs is None:
-            kwargs = {
-                "marker": "*",
-                "ls": "dotted", 
-                "label": "diffuse gal / sr"
-            }
+            kwargs = {"marker": "*", "ls": "dotted", "label": "diffuse gal / sr"}
 
         # Exposure varies very little with energy at these high energies
         energy = np.geomspace(0.1 * u.GeV, 1 * u.TeV, 20)
@@ -231,16 +223,16 @@ class FermiAnalysis(Events, EnergyMatrix):
         ) * u.Unit("1/(cm2*s*MeV*sr)")
 
         plt.plot(
-            energy, 
-            dnde * u.sr, 
+            energy,
+            dnde * u.sr,
             ax=ax,
             **kwargs,
         )
 
         energy_range = [0.1, 2000] * u.GeV
         self.diffiso.spectral_model.plot(
-            energy_range, 
-            sed_type="dnde", 
+            energy_range,
+            sed_type="dnde",
             ax=ax,
             label="diffuse iso",
         )
@@ -324,16 +316,16 @@ class FermiAnalysis(Events, EnergyMatrix):
             model, redshift=redshift
         )
 
-    def create_skymodel(self):
+    def create_skymodel(self, lp_is_intrinsic):
 
         self.log.info("Creating full skymodel")
 
-        self.SkyModel = FermiSkyModel(self.xml_f,self.auxpath)
+        self.SkyModel = FermiSkyModel(self.xml_f, self.auxpath)
         self.SkyModel.set_target_name(self.targetname)
         self.SkyModel.set_galdiffuse(self.diffuse_cutout)
         self.SkyModel.set_isodiffuse(self.diffiso)
         self.SkyModel.set_ebl_absorption(self.ebl_absorption)
-        self.SkyModel.create_full_skymodel()
+        self.SkyModel.create_full_skymodel(lp_is_intrinsic)
 
     def add_source_to_exclusion_region(self, src=None, radius=0.1 * u.deg, reset=False):
 
@@ -405,6 +397,8 @@ class FermiAnalysis(Events, EnergyMatrix):
     ):
 
         self.read_irfs()
+        lp_is_intrinsic = self.model == "LogParabola"
+
         self.set_energy_axes()
         self.energy_dispersion_matrix()
 
@@ -419,13 +413,13 @@ class FermiAnalysis(Events, EnergyMatrix):
             self.countsmap.geom.as_energy_true
         )
         self.set_targetname(targetname)
-        
+
         if ebl_absorption != None:
             self.set_ebl_absorption_from_model(ebl_absorption)
         elif redshift != None:
             self.set_ebl_absorption_from_redshift(redshift, ebl_model)
-        
-        self.create_skymodel()
+
+        self.create_skymodel(lp_is_intrinsic)
         self.create_dataset()
 
     def gen_plots(self):

@@ -22,7 +22,7 @@ from gammapy.modeling.models import (
 
 
 class FermiSkyModel(object):
-    def __init__(self,xml_f,auxpath):
+    def __init__(self, xml_f, auxpath):
         self.xml_f = xml_f
         self.auxpath = auxpath
         self._set_logging()
@@ -183,9 +183,9 @@ class FermiSkyModel(object):
         self.log.info(" -> {0}".format("Galactic diffuse"))
         return source
 
-    def create_source_skymodel(self, src):
+    def create_source_skymodel(self, src, lp_is_intrinsic=False):
         srcname = src["@name"]
-        #srctype = src["@type"]
+        # srctype = src["@type"]
         spectype = src["spectrum"]["@type"].split("EblAtten::")[-1]
         spectrum = src["spectrum"]["parameter"]
         # spatialtype = src["spatialModel"]["@type"]
@@ -204,7 +204,10 @@ class FermiSkyModel(object):
         if spectype == "PowerLaw":
             model = self.powerlaw(spectrum, is_src_target)
         elif spectype == "LogParabola" and "EblAtten" in src["spectrum"]["@type"]:
-            model = self.powerlaw_eblatten(spectrum, is_src_target)
+            if lp_is_intrinsic:
+                model = self.logparabola(spectrum, is_src_target)
+            else:
+                model = self.powerlaw_eblatten(spectrum, is_src_target)
         elif spectype == "LogParabola":
             model = self.logparabola(spectrum, is_src_target)
         elif spectype == "PLSuperExpCutoff":
@@ -222,30 +225,30 @@ class FermiSkyModel(object):
 
         if is_src_target and self.ebl_absorption != None:
             model = model * self.ebl_absorption
-                
+
         if src["spatialModel"]["@type"] == "SkyDirFunction":
             spatial_model = PointSpatialModel(
-                lon_0="{} deg".format(spatialpars[0]["@value"]), 
-                lat_0="{} deg".format(spatialpars[1]["@value"]), 
+                lon_0="{} deg".format(spatialpars[0]["@value"]),
+                lat_0="{} deg".format(spatialpars[1]["@value"]),
                 frame="fk5",
             )
         elif src["spatialModel"]["@type"] == "SpatialMap":
             filename = src["spatialModel"]["@file"].split("/")[-1]
             filepath = f"{self.auxpath}/Templates/{filename}"
             m = Map.read(filepath)
-            m = m.copy(unit = "sr^-1")
+            m = m.copy(unit="sr^-1")
             spatial_model = TemplateSpatialModel(m, filename=filepath)
-        
-        spatial_model.freeze()        
-        
+
+        spatial_model.freeze()
         source = SkyModel(
             spectral_model=model,
             spatial_model=spatial_model,
             name=srcname,
         )
+
         return source
 
-    def create_full_skymodel(self):
+    def create_full_skymodel(self, lp_is_intrinsic=False):
 
         self.list_sources = []
 
@@ -261,6 +264,6 @@ class FermiSkyModel(object):
             elif srcname == "GalDiffModel":
                 source = self.create_galdiffuse_skymodel()
             else:
-                source = self.create_source_skymodel(src)
-            
-            self.list_sources.append(source)    
+                source = self.create_source_skymodel(src, lp_is_intrinsic)
+
+            self.list_sources.append(source)

@@ -145,7 +145,7 @@ class SpectralAnalysis(FitMaker):
 
             self.fit_energy_bin()
 
-    def plot_spectrum(self, ax=None, kwargs_fp=None, kwargs_m=None):
+    def plot_spectrum(self, ax=None, kwargs_fp=None, kwargs_model=None):
 
         energy_range = Quantity([self.ebin_edges[0], self.ebin_edges[-1]])
 
@@ -166,9 +166,11 @@ class SpectralAnalysis(FitMaker):
         spec = self.target_model.spectral_model
         spec.evaluate_error(energy_range)
         spec.plot(ax=ax, energy_bounds=energy_range, sed_type="e2dnde", **kwargs_model)
-        kwargs_model.pop("label")
+
+        kwargs_model_err = kwargs_model.copy()
+        kwargs_model_err.pop("label", None)
         spec.plot_error(
-            ax=ax, energy_bounds=energy_range, sed_type="e2dnde", **kwargs_model
+            ax=ax, energy_bounds=energy_range, sed_type="e2dnde", **kwargs_model_err
         )
         return ax
 
@@ -201,7 +203,8 @@ class SpectralAnalysis(FitMaker):
             }
 
         if kwargs_model_err is None:
-            kwargs_model_err = kwargs_model.pop("mew")
+            kwargs_model_err = kwargs_model.copy()
+            kwargs_model_err.pop("mew", None)
             kwargs_model_err["alpha"] = 0.2
             kwargs_model_err["label"] = "enrico/fermitools"
 
