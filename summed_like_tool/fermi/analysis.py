@@ -138,7 +138,7 @@ class Events(EnergyAxes):
 
         self.src_pos = SkyCoord(ra, dec, unit="deg", frame="fk5")
 
-    def counts_map(self):
+    def _counts_map(self):
 
         self.log.info("Creating counts map")
 
@@ -317,10 +317,10 @@ class FermiAnalysis(Events, EnergyMatrix):
 
         self.log.info("Creating full skymodel")
 
-        self.SkyModel = FermiSkyModel(self.xml_f, self.auxpath)
+        self.SkyModel = FermiSkyModel(self.xml_f, self.aux_path)
         self.SkyModel.set_target_name(self.target_name)
-        self.SkyModel.set_galdiffuse(self.diffuse_cutout)
-        self.SkyModel.set_isodiffuse(self.diff_iso)
+        self.SkyModel.set_gal_diffuse(self.diffuse_cutout)
+        self.SkyModel.set_iso_diffuse(self.diff_iso)
         self.SkyModel.set_ebl_absorption(self.ebl_absorption)
         self.SkyModel.create_full_skymodel(lp_is_intrinsic)
 
@@ -402,7 +402,7 @@ class FermiAnalysis(Events, EnergyMatrix):
         self.load_events()
         self.get_src_skycoord()
 
-        self.counts_map()
+        self._counts_map()
         self.diffuse_background_models()
 
         self.set_edisp_interpolator()
