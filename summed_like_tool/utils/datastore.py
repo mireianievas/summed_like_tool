@@ -1,5 +1,6 @@
 import glob
 from pathlib import Path
+
 from astropy.io import fits
 from astropy.table import Table
 
@@ -13,7 +14,7 @@ def make_obs_index(path):
     dec_pnts = []
     tstarts = []
     tstops = []
-    deadcs = []
+    dead_counts = []
     for _file in files:
         with fits.open(_file) as hdus:
             events_header = hdus[1].header
@@ -22,11 +23,11 @@ def make_obs_index(path):
             dec_pnts.append(events_header["DEC_PNT"])
             tstarts.append(events_header["TSTART"])
             tstops.append(events_header["TSTOP"])
-            deadcs.append(events_header["DEADC"])
+            dead_counts.append(events_header["DEADC"])
 
     # create obs index
     obs_table = Table(
-        [obs_ids, ra_pnts, dec_pnts, tstarts, tstops, deadcs],
+        [obs_ids, ra_pnts, dec_pnts, tstarts, tstops, dead_counts],
         names=("OBS_ID", "RA_PNT", "DEC_PNT", "TSTART", "TSTOP", "DEADC"),
         dtype=(">i8", ">f4", ">f4", ">f4", ">f4", ">f4"),
         meta={

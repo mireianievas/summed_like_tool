@@ -3,10 +3,10 @@ import logging
 
 
 class Files(object):
-    def __init__(self, lat_path, aux_path, srcmodel):
+    def __init__(self, lat_path, aux_path, source_model):
         self.path = lat_path
-        self.auxpath = aux_path
-        self.model = srcmodel
+        self.aux_path = aux_path
+        self.model = source_model
         self._set_logging()
 
     def _set_logging(self):
@@ -21,8 +21,8 @@ class Files(object):
         self.xml_files = glob(f"{self.path}/*_out.xml")
         self.expmap_files = glob(f"{self.path}/*_BinnedMap.fits*")
         self.psf_files = glob(f"{self.path}/*_psf.fits*")
-        self.diffgal_files = glob(f"{self.auxpath}/gll_iem_v07.fits*")
-        self.iso_files = glob(f"{self.auxpath}/iso_P8R3_SOURCE_V3_*.txt")
+        self.diff_gal_files = glob(f"{self.aux_path}/gll_iem_v07.fits*")
+        self.iso_files = glob(f"{self.aux_path}/iso_P8R3_SOURCE_V3_*.txt")
 
     def discover_spectra_result(self):
         self.lat_spectra = glob(f"{self.path}/Spectrum/SED*{self.model}*.dat")
@@ -56,15 +56,15 @@ class Files(object):
 
     def select_unique_files(self, key):
         self.unique_name = key
-        varlist = [
+        var_list = [
             "events_files",
             "edrm_files",
             "expmap_files",
             "psf_files",
             "iso_files",
-            #'diffgal_files'
+            #'diff_gal_files'
         ]
-        for _v in varlist:
+        for _v in var_list:
             try:
                 filtered = [K for K in getattr(self, _v) if key in K]
                 assert len(filtered) == 1
@@ -78,20 +78,20 @@ class Files(object):
                 setattr(self, _v.replace("_files", "_f"), filtered[0])
 
         self.xml_f = [f for f in self.xml_files if self.model in f][0]
-        self.diffgal_f = self.diffgal_files[0]
+        self.diff_gal_f = self.diff_gal_files[0]
 
     def print_selected_files(self):
-        varlist = [
+        var_list = [
             "events_f",
             "edrm_f",
             "expmap_f",
             "psf_f",
             "iso_f",
-            "diffgal_f",
+            "diff_gal_f",
             "xml_f",
         ]
 
-        for _v in varlist:
+        for _v in var_list:
             self.log.info(getattr(self, _v))
 
     def prepare_files(self, key):

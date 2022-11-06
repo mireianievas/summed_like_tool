@@ -1,30 +1,27 @@
-from summed_like_tool.fermi.files import Files
-
 import logging
 import xmltodict
-from gammapy.modeling import Parameter
 
 import astropy.units as u
 
 from gammapy.maps import Map
-
+from gammapy.modeling import Parameter
 from gammapy.modeling.models import (
+    SkyModel,
+    PointSpatialModel,
+    TemplateSpatialModel,
     PowerLawSpectralModel,
     LogParabolaSpectralModel,
     ExpCutoffPowerLawSpectralModel,
     SuperExpCutoffPowerLaw4FGLSpectralModel,
     SuperExpCutoffPowerLaw4FGLDR3SpectralModel,
-    PointSpatialModel,
-    SkyModel,
-    TemplateSpatialModel,
     PowerLawNormSpectralModel,
 )
 
 
 class FermiSkyModel(object):
-    def __init__(self, xml_f, auxpath):
+    def __init__(self, xml_f, aux_path):
         self.xml_f = xml_f
-        self.auxpath = auxpath
+        self.aux_path = aux_path
         self._set_logging()
         self.ebl_absorption = None
 
@@ -33,17 +30,17 @@ class FermiSkyModel(object):
         self.log.setLevel(logging.INFO)
 
     def set_target_name(self, name):
-        self.targetname = name
+        self.target_name = name
 
-    def set_isodiffuse(self, isodiffuse):
-        self.isodiffuse = isodiffuse
-        self.isodiffuse.spectral_model.model1.parameters[0].min = 0.001
-        self.isodiffuse.spectral_model.model1.parameters[0].max = 10
-        self.isodiffuse.spectral_model.model2.parameters[0].min = 0
-        self.isodiffuse.spectral_model.model2.parameters[0].max = 10
+    def set_iso_diffuse(self, iso_diffuse):
+        self.iso_diffuse = iso_diffuse
+        self.iso_diffuse.spectral_model.model1.parameters[0].min = 0.001
+        self.iso_diffuse.spectral_model.model1.parameters[0].max = 10
+        self.iso_diffuse.spectral_model.model2.parameters[0].min = 0
+        self.iso_diffuse.spectral_model.model2.parameters[0].max = 10
 
-    def set_galdiffuse(self, galdiffuse):
-        self.galdiffuse = galdiffuse
+    def set_gal_diffuse(self, gal_diffuse):
+        self.gal_diffuse = gal_diffuse
 
     def set_ebl_absorption(self, ebl_absorption):
         self.ebl_absorption = ebl_absorption
@@ -60,9 +57,9 @@ class FermiSkyModel(object):
         return P
 
     @staticmethod
-    def index(var, name="index", keepsign=False, is_src_target=False):
+    def index(var, name="index", keep_sign=False, is_src_target=False):
         P = Parameter(name=name, value=0)
-        if name == "index" and not keepsign:
+        if name == "index" and not keep_sign:
             Sign = -1
         else:
             Sign = +1
@@ -109,7 +106,7 @@ class FermiSkyModel(object):
             spectrum[0], name="amplitude", is_src_target=is_src_target
         )
         model.index = self.index(
-            spectrum[1], name="index", keepsign=True, is_src_target=is_src_target
+            spectrum[1], name="index", keep_sign=True, is_src_target=is_src_target
         )
         model.reference = self.reference(
             spectrum[3], name="reference", is_src_target=is_src_target
@@ -162,16 +159,16 @@ class FermiSkyModel(object):
         )
         return model
 
-    def create_isodiffuse_skymodel(self):
-        source = self.isodiffuse
+    def create_iso_diffuse_skymodel(self):
+        source = self.iso_diffuse
         # source.parameters["norm"].min = 0
         # source.parameters["norm"].max = 10
         # source.parameters["norm"].frozen = False
         self.log.info(" -> {0}".format("Iso diffuse"))
         return source
 
-    def create_galdiffuse_skymodel(self):
-        template_diffuse = TemplateSpatialModel(self.galdiffuse, normalize=False)
+    def create_gal_diffuse_skymodel(self):
+        template_diffuse = TemplateSpatialModel(self.gal_diffuse, normalize=False)
         source = SkyModel(
             spectral_model=PowerLawNormSpectralModel(),
             spatial_model=template_diffuse,
@@ -184,42 +181,42 @@ class FermiSkyModel(object):
         return source
 
     def create_source_skymodel(self, src, lp_is_intrinsic=False):
-        srcname = src["@name"]
+        source_name = src["@name"]
         # srctype = src["@type"]
-        spectype = src["spectrum"]["@type"].split("EblAtten::")[-1]
+        spectrum_type = src["spectrum"]["@type"].split("EblAtten::")[-1]
         spectrum = src["spectrum"]["parameter"]
-        # spatialtype = src["spatialModel"]["@type"]
-        spatialpars = src["spatialModel"]["parameter"]
+        # spatial_type = src["spatialModel"]["@type"]
+        spatial_pars = src["spatialModel"]["parameter"]
 
-        srcname_red = srcname.replace("_", "").replace(" ", "")
-        target_red = self.targetname.replace("_", "").replace(" ", "")
+        source_name_red = source_name.replace("_", "").replace(" ", "")
+        target_red = self.target_name.replace("_", "").replace(" ", "")
 
-        if srcname_red == target_red:
-            srcname = self.targetname
+        if source_name_red == target_red:
+            source_name = self.target_name
             is_src_target = True
             self.log.debug("Detected target source")
         else:
             is_src_target = False
 
-        if spectype == "PowerLaw":
+        if spectrum_type == "PowerLaw":
             model = self.powerlaw(spectrum, is_src_target)
-        elif spectype == "LogParabola" and "EblAtten" in src["spectrum"]["@type"]:
+        elif spectrum_type == "LogParabola" and "EblAtten" in src["spectrum"]["@type"]:
             if lp_is_intrinsic:
                 model = self.logparabola(spectrum, is_src_target)
             else:
                 model = self.powerlaw_eblatten(spectrum, is_src_target)
-        elif spectype == "LogParabola":
+        elif spectrum_type == "LogParabola":
             model = self.logparabola(spectrum, is_src_target)
-        elif spectype == "PLSuperExpCutoff":
+        elif spectrum_type == "PLSuperExpCutoff":
             model = self.plexpcutoff(spectrum, is_src_target)
-        elif spectype == "PLSuperExpCutoff4":
+        elif spectrum_type == "PLSuperExpCutoff4":
             model = self.plexpcutoff4(spectrum, is_src_target)
         else:
-            print(spectype)
+            print(spectrum_type)
 
         self.log.info(
             " -> {0}, {1}, frozen? {2}".format(
-                srcname, spectype, str(model.amplitude.frozen)
+                source_name, spectrum_type, str(model.amplitude.frozen)
             )
         )
 
@@ -228,22 +225,22 @@ class FermiSkyModel(object):
 
         if src["spatialModel"]["@type"] == "SkyDirFunction":
             spatial_model = PointSpatialModel(
-                lon_0="{} deg".format(spatialpars[0]["@value"]),
-                lat_0="{} deg".format(spatialpars[1]["@value"]),
+                lon_0="{} deg".format(spatial_pars[0]["@value"]),
+                lat_0="{} deg".format(spatial_pars[1]["@value"]),
                 frame="fk5",
             )
         elif src["spatialModel"]["@type"] == "SpatialMap":
-            filename = src["spatialModel"]["@file"].split("/")[-1]
-            filepath = f"{self.auxpath}/Templates/{filename}"
-            m = Map.read(filepath)
+            file_name = src["spatialModel"]["@file"].split("/")[-1]
+            file_path = f"{self.aux_path}/Templates/{file_name}"
+            m = Map.read(file_path)
             m = m.copy(unit="sr^-1")
-            spatial_model = TemplateSpatialModel(m, filename=filepath)
+            spatial_model = TemplateSpatialModel(m, filename=file_path)
 
         spatial_model.freeze()
         source = SkyModel(
             spectral_model=model,
             spatial_model=spatial_model,
-            name=srcname,
+            name=source_name,
         )
 
         return source
@@ -258,11 +255,11 @@ class FermiSkyModel(object):
 
         par_to_val = lambda par: float(par["@value"]) * float(par["@scale"])
         for k, src in enumerate(data):
-            srcname = src["@name"]
-            if srcname == "IsoDiffModel":
-                source = self.create_isodiffuse_skymodel()
-            elif srcname == "GalDiffModel":
-                source = self.create_galdiffuse_skymodel()
+            source_name = src["@name"]
+            if source_name == "IsoDiffModel":
+                source = self.create_iso_diffuse_skymodel()
+            elif source_name == "GalDiffModel":
+                source = self.create_gal_diffuse_skymodel()
             else:
                 source = self.create_source_skymodel(src, lp_is_intrinsic)
 

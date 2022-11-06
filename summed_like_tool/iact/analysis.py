@@ -1,54 +1,31 @@
-import gzip
 import numpy as np
 from matplotlib import pyplot as plt
+
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from astropy.io import fits as pyfits
-from gammapy.data import DataStore, ObservationFilter
+from regions import PointSkyRegion, CircleSkyRegion
+
+# from gammapy.analysis import Analysis, AnalysisConfig
+from gammapy.data import DataStore
 from gammapy.datasets import (
     Datasets,
     SpectrumDataset,
-    SpectrumDatasetOnOff,
-    FluxPointsDataset,
+#    SpectrumDatasetOnOff,
+#    FluxPointsDataset,
 )
+# from gammapy.estimators import FluxPointsEstimator,LightCurveEstimator
 from gammapy.makers import (
     SafeMaskMaker,
     SpectrumDatasetMaker,
     WobbleRegionsFinder,
     ReflectedRegionsBackgroundMaker,
 )
-from gammapy.irf import (
-    EDispKernel,
-    PSFMap,
-    EDispMap,
-    EDispKernelMap,
-)
-from gammapy.maps import Map, WcsGeom, MapAxis, RegionGeom
-from gammapy.data import EventList
-from gammapy.modeling.models import (
-    SkyModel,
-    Models,
-    TemplateSpatialModel,
-    PowerLawNormSpectralModel,
-    EBLAbsorptionNormSpectralModel,
-    create_fermi_isotropic_diffuse_model,
-)
-
-from gammapy.modeling.models.core import DatasetModels
-from regions import PointSkyRegion, CircleSkyRegion
-
-# from .skymodel import FermiSkyModel
-from .files import Files
-from ..utils.plotting import new_viridis
-
-from pathlib import Path
-import logging
-
-
-# from gammapy.estimators import FluxPointsEstimator,LightCurveEstimator
+from gammapy.maps import WcsGeom, MapAxis, RegionGeom
+from gammapy.modeling import Fit
+from gammapy.modeling.models import SkyModel, PowerLawSpectralModel
 from gammapy.visualization import plot_spectrum_datasets_off_regions
-from gammapy.analysis import Analysis, AnalysisConfig
 
+from .files import Files
 from ..utils.datastore import make_obs_hdu_index
 
 
@@ -72,13 +49,13 @@ class Observations(Files):
             make_obs_hdu_index(self.dl3_path)
             self.datastore = DataStore.from_dir(self.dl3_path)
 
-    def get_targetname(self):
-        self.targetname = np.unique(self.datastore.obs_table["OBJECT"])[0]
-        self.log.info("The source is {}".format(self.targetname))
+    def get_target_name(self):
+        self.target_name = np.unique(self.datastore.obs_table["OBJECT"])[0]
+        self.log.info("The source is {}".format(self.target_name))
 
-    def set_targetname(self, name):
-        self.targetname = name
-        self.log.info("The source is {}".format(self.targetname))
+    def set_target_name(self, name):
+        self.target_name = name
+        self.log.info("The source is {}".format(self.target_name))
 
     def get_observations(self):
         self.obs_list = self.datastore.obs_table["OBS_ID"].data
@@ -90,36 +67,36 @@ class Observations(Files):
 
 
 class EnergyAxes(Files):
-    def set_energy_axes(self, eedges=None, emin=None, emax=None, nbins=None):
+    def set_energy_axes(self, en_edges=None, en_min=None, en_max=None, nbins=None):
         self.log.info("Setting energy axes")
 
-        if eedges == None:
-            if emin == None:
-                emin = 10**1 * u.GeV
-            if emax == None:
-                emax = 10**5 * u.GeV
+        if en_edges == None:
+            if en_min == None:
+                en_min = 10**1 * u.GeV
+            if en_max == None:
+                en_max = 10**5 * u.GeV
             if nbins == None:
-                nbins = int(np.log10(emax / emin) * 5)  # 5 bins per decade
-            eedger = np.geomspace(emin / u.GeV, emax / u.GeV, nbins) * u.GeV
-            eedget = np.geomspace(emin / u.GeV, emax / u.GeV, nbins) * u.GeV
+                nbins = int(np.log10(en_max / en_min) * 5)  # 5 bins per decade
+            reco_energy_edges = np.geomspace(en_min / u.GeV, en_max / u.GeV, nbins) * u.GeV
+            true_energy_edges = np.geomspace(en_min / u.GeV, en_max / u.GeV, nbins) * u.GeV
         else:
-            eedger = eedges
-            eedget = eedges
+            reco_energy_edges = en_edges
+            true_energy_edges = en_edges
 
-        self.energy_axis = MapAxis.from_energy_edges(eedger)
-        self.energy_axis_true = MapAxis.from_energy_edges(eedget).copy(
+        self.energy_axis = MapAxis.from_energy_edges(reco_energy_edges)
+        self.energy_axis_true = MapAxis.from_energy_edges(true_energy_edges).copy(
             name="energy_true"
         )
 
 
 class Analysis1D(Observations, EnergyAxes):
-    def set_src_pos(self, src_pos=None, targetname=None):
+    def set_src_pos(self, src_pos=None, target_name=None):
         if src_pos != None:
             self.src_pos = src_pos
         else:
-            if targetname == None:
-                targetname = self.targetname
-            self.src_pos = SkyCoord.from_name(targetname)
+            if target_name == None:
+                target_name = self.target_name
+            self.src_pos = SkyCoord.from_name(target_name)
         self.log.info("Setting source position to {}".format(self.src_pos))
 
     def set_on_region(self):
@@ -161,7 +138,7 @@ class Analysis1D(Observations, EnergyAxes):
             offset_max=offset_max if offset_max is not None else "3 deg",
         )
 
-    def add_source_to_exclusion_region(self, src=None, radius=0.1 * u.deg, reset=False):
+    def add_source_to_exclusion_region(self, source_name=None, radius=0.1 * u.deg, reset=False):
 
         try:
             self.exclusion_regions
@@ -169,15 +146,15 @@ class Analysis1D(Observations, EnergyAxes):
         except:
             self.exclusion_regions = []
 
-        if src != None:
-            if isinstance(src, str):
+        if source_name != None:
+            if isinstance(source_name, str):
                 exclusion_region = CircleSkyRegion(
                     center=SkyCoord.from_name("Crab Nebula", frame="galactic"),
                     radius=radius,
                 )
-            elif isinstance(src, SkyCoord):
+            elif isinstance(source_name, SkyCoord):
                 exclusion_region = CircleSkyRegion(
-                    center=src.galactic,
+                    center=source_name.galactic,
                     radius=radius,
                 )
             self.exclusion_regions.append(exclusion_region)
@@ -214,28 +191,28 @@ class Analysis1D(Observations, EnergyAxes):
             try:
                 self.log.info("Run ID {}".format(obs.obs_id))
 
-                cen_pnt = SkyCoord(
+                central_pointing = SkyCoord(
                     obs.obs_info["RA_PNT"],
                     obs.obs_info["DEC_PNT"],
                     frame="icrs",
                     unit="deg",
                 )
 
-                self.region_finder.run(self.on_region, cen_pnt)
+                self.region_finder.run(self.on_region, central_pointing)
 
-                self.region_finder.run(self.on_region, cen_pnt)
-                
+                self.region_finder.run(self.on_region, central_pointing)
+
                 if obs.fixed_pointing_info.meta["OBS_MODE"] == "UNDETERMINED":
                     self.log.warning("OBS_MODE for run {} is UNDETERMINED, wrong offset?".format(obs.obs_id))
                     obs.fixed_pointing_info.meta["OBS_MODE"] = "WOBBLE"
-                
+
                 dataset = self.dataset_maker.run(
                     self.dataset_template.copy(name=str(obs.obs_id)), obs
                 )
 
                 counts_off = self.bkg_maker.make_counts_off(dataset, obs)
                 dataset_on_off = self.bkg_maker.run(dataset, obs)
-                dataset_on_off.meta_table["SOURCE"] = self.targetname
+                dataset_on_off.meta_table["SOURCE"] = self.target_name
                 dataset_on_off = self.safe_mask_masker.run(dataset_on_off, obs)
                 self.datasets.append(dataset_on_off)
                 self.counts_off_array.append(counts_off)
@@ -257,7 +234,7 @@ class Analysis1D(Observations, EnergyAxes):
         plt.grid()
 
         CS = ["C{}".format(k) for k in range(10)]
-        markers = ["*", "o", "+", "X", "s", "^", "v", "d"]
+        # markers = ["*", "o", "+", "X", "s", "^", "v", "d"]
 
         for k, obs in enumerate(self.observations_total):
             point = PointSkyRegion(
@@ -346,7 +323,7 @@ class Analysis1D(Observations, EnergyAxes):
         spectral_model = PowerLawSpectralModel(
             index=2, amplitude=2e-11 * u.Unit("cm-2 s-1 TeV-1"), reference=1 * u.TeV
         )
-        model = SkyModel(spectral_model=spectral_model, name=self.targetname)
+        model = SkyModel(spectral_model=spectral_model, name=self.target_name)
         model_check = model.copy()
 
         # Stacked dataset method

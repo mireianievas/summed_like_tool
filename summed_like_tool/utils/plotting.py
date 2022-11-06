@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib as mpl
-from matplotlib import pyplot as plt
 
 
 def new_viridis():
