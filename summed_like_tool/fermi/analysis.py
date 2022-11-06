@@ -4,9 +4,10 @@ from matplotlib import pyplot as plt
 
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from astropy.io import fits as pyfits
+from astropy.io import fits
 from regions import CircleSkyRegion
 
+from gammapy.data import EventList
 from gammapy.datasets import MapDataset
 from gammapy.irf import (
     EDispKernel,
@@ -14,9 +15,7 @@ from gammapy.irf import (
     EDispMap,
     EDispKernelMap,
 )
-
-from gammapy.maps import MapAxis, Map, WcsGeom, RegionGeom
-from gammapy.data import EventList
+from gammapy.maps import MapAxis, Map
 from gammapy.modeling.models import (
     SkyModel,
     Models,
@@ -25,21 +24,17 @@ from gammapy.modeling.models import (
     EBLAbsorptionNormSpectralModel,
     create_fermi_isotropic_diffuse_model,
 )
-
 from gammapy.modeling.models.core import DatasetModels
 
 from .skymodel import FermiSkyModel
 from .files import Files
 from ..utils.plotting import new_viridis
 
-# self.lat_bute = Table.read(self.lat_bute_file,format='ascii')
-# self.lat_ebin = Table.read(self.lat_ebin_file,format='ascii')
-
 
 class InstrumentResponse(Files):
     def read_exposure(self):
 
-        self.log.info("Reading exposure")
+        self.log.info("Reading Exposure")
 
         self.exposure = Map.read(self.expmap_f)
 
@@ -51,22 +46,22 @@ class InstrumentResponse(Files):
 
     def read_energy_dispersion(self):
 
-        self.log.info("Reading exposure")
+        self.log.info("Reading Exposure")
 
-        self.drmap = pyfits.open(self.edrm_f)
+        self.drmap = fits.open(self.edrm_f)
 
     def read_diffuse_background(self):
 
-        self.log.info("Reading galactic diffuse")
+        self.log.info("Reading Galactic Diffuse")
 
-        self.diffgalac = Map.read(self.diffgal_f)
+        self.diff_gal = Map.read(self.diff_gal_f)
 
-        self.log.info("Reading isotropic diffuse")
+        self.log.info("Reading Isotropic Diffuse")
 
-        self.diffiso = create_fermi_isotropic_diffuse_model(
+        self.diff_iso = create_fermi_isotropic_diffuse_model(
             filename=self.iso_f, interp_kwargs={"fill_value": None}
         )
-        self.diffiso._name = "{}-{}".format(self.diffiso.name, self.tag)
+        self.diff_iso._name = "{}-{}".format(self.diff_iso.name, self.tag)
 
     def read_irfs(self):
 
@@ -92,7 +87,7 @@ class EnergyAxes(InstrumentResponse):
 class EnergyMatrix(EnergyAxes):
     def energy_dispersion_matrix(self):
 
-        self.log.info("Creating energy dispersion kernel")
+        self.log.info("Creating Energy Dispersion Kernel")
 
         drm = self.drmap["DRM"].data["MATRIX"]
         drm_matrix = np.array(list(drm))
@@ -103,7 +98,7 @@ class EnergyMatrix(EnergyAxes):
 
     def plot_energy_dispersion_matrix(self):
 
-        print("Peek on original edisp kernel")
+        print("Peek on original EDisp Kernel")
         return self.edisp_kernel.peek()
 
 
@@ -118,11 +113,11 @@ class Events(EnergyAxes):
                 with open("temp_events.fits", "wb") as f:
                     f.write(gzip.decompress(gzfile.read()))
 
-            # eventfits = read_fits_gz(event_f)
-            self.eventfits = pyfits.open("temp_events.fits")
+            # event_fits = read_fits_gz(event_f)
+            self.event_fits = fits.open("temp_events.fits")
             self.events = EventList.read("temp_events.fits")
         except:
-            self.eventfits = pyfits.open(self.events_f)
+            self.event_fits = fits.open(self.events_f)
             self.events = EventList.read(self.events_f)
 
     def get_src_skycoord(self):
@@ -130,10 +125,10 @@ class Events(EnergyAxes):
         self.log.info("Loading sky coordinates")
 
         try:
-            dsval2 = self.eventfits[1].header["DSVAL2"]
+            dsval2 = self.event_fits[1].header["DSVAL2"]
             ra, dec = [float(k) for k in dsval2.split("(")[1].split(",")[0:2]]
         except IndexError:
-            history = str(self.eventfits[1].header["HISTORY"])
+            history = str(self.event_fits[1].header["HISTORY"])
             ra, dec = (
                 history.split("angsep(RA,DEC,")[1]
                 .replace("\n", "")
@@ -147,7 +142,7 @@ class Events(EnergyAxes):
 
         self.log.info("Creating counts map")
 
-        self.countsmap = Map.create(
+        self.counts_map = Map.create(
             skydir=self.src_pos,
             npix=(self.exposure.geom.npix[0][0], self.exposure.geom.npix[1][0]),
             proj="TAN",
@@ -156,21 +151,21 @@ class Events(EnergyAxes):
             axes=[self.energy_axis],
             dtype=float,
         )
-        self.countsmap.fill_by_coord(
+        self.counts_map.fill_by_coord(
             {"skycoord": self.events.radec, "energy": self.events.energy}
         )
 
     def plot_counts_map(self, ax=None, kwargs=None):
 
         percentiles = np.percentile(
-            self.countsmap.sum_over_axes().smooth(1).data, [10, 99.9]
+            self.counts_map.sum_over_axes().smooth(1).data, [10, 99.9]
         )
         if kwargs is None:
             kwargs = {
                 "cmap": new_viridis(),
             }
 
-        self.countsmap.sum_over_axes().smooth(1.5).plot(
+        self.counts_map.sum_over_axes().smooth(1.5).plot(
             ax=ax,
             stretch="sqrt",
             vmin=percentiles[0],
@@ -185,23 +180,23 @@ class Events(EnergyAxes):
 
 
 class FermiAnalysis(Events, EnergyMatrix):
-    def set_targetname(self, targetname):
-        self.targetname = targetname
+    def set_target_name(self, target_name):
+        self.target_name = target_name
 
     def diffuse_background_models(self):
 
-        self.log.info("Creating galactic diffuse model cutout")
+        self.log.info("Creating Galactic Diffuse Model cutout")
 
         # Doing a cutout may improve fitting speed.
-        self.diffuse_cutout = self.diffgalac.cutout(
-            self.countsmap.geom.center_skydir, self.countsmap.geom.width[0]
+        self.diffuse_cutout = self.diff_gal.cutout(
+            self.counts_map.geom.center_skydir, self.counts_map.geom.width[0]
         )
 
         self.template_diffuse = TemplateSpatialModel(
             self.diffuse_cutout, normalize=False
         )
 
-        self.diffgalac_cutout = SkyModel(
+        self.diff_gal_cutout = SkyModel(
             spectral_model=PowerLawNormSpectralModel(),
             spatial_model=self.template_diffuse,
             name="diffuse-iem",
@@ -230,7 +225,7 @@ class FermiAnalysis(Events, EnergyMatrix):
         )
 
         energy_range = [0.1, 2000] * u.GeV
-        self.diffiso.spectral_model.plot(
+        self.diff_iso.spectral_model.plot(
             energy_range,
             sed_type="dnde",
             ax=ax,
@@ -265,7 +260,7 @@ class FermiAnalysis(Events, EnergyMatrix):
 
     def set_edisp_interpolator(self):
 
-        drmap = pyfits.open(self.edrm_f)
+        drmap = fits.open(self.edrm_f)
 
         energy_lo = drmap["DRM"].data["ENERG_LO"] * u.MeV
         energy_hi = drmap["DRM"].data["ENERG_HI"] * u.MeV
@@ -278,7 +273,7 @@ class FermiAnalysis(Events, EnergyMatrix):
         edisp_kernel = EDispKernel(axes=[drm_eaxis_true, drm_eaxis], data=drm_matrix)
 
         axis_reco = MapAxis.from_edges(
-            self.countsmap.geom.axes["energy"].edges,
+            self.counts_map.geom.axes["energy"].edges,
             name="energy",
             unit="MeV",
             interp="log",
@@ -303,6 +298,8 @@ class FermiAnalysis(Events, EnergyMatrix):
         edisp = EDispMap.from_diagonal_response(energy_axis_true=e_true)
         edisp_map = edisp.edisp_map
 
+        return edisp_map
+
     def set_ebl_absorption_from_model(self, ebl_absorption=None):
 
         self.ebl_absorption = ebl_absorption
@@ -321,13 +318,13 @@ class FermiAnalysis(Events, EnergyMatrix):
         self.log.info("Creating full skymodel")
 
         self.SkyModel = FermiSkyModel(self.xml_f, self.auxpath)
-        self.SkyModel.set_target_name(self.targetname)
+        self.SkyModel.set_target_name(self.target_name)
         self.SkyModel.set_galdiffuse(self.diffuse_cutout)
-        self.SkyModel.set_isodiffuse(self.diffiso)
+        self.SkyModel.set_isodiffuse(self.diff_iso)
         self.SkyModel.set_ebl_absorption(self.ebl_absorption)
         self.SkyModel.create_full_skymodel(lp_is_intrinsic)
 
-    def add_source_to_exclusion_region(self, src=None, radius=0.1 * u.deg, reset=False):
+    def add_source_to_exclusion_region(self, source_name=None, radius=0.1 * u.deg, reset=False):
 
         try:
             self.exclusion_regions
@@ -335,15 +332,15 @@ class FermiAnalysis(Events, EnergyMatrix):
         except:
             self.exclusion_regions = []
 
-        if src != None:
-            if isinstance(src, str):
+        if source_name != None:
+            if isinstance(source_name, str):
                 exclusion_region = CircleSkyRegion(
                     center=SkyCoord.from_name("Crab Nebula", frame="galactic"),
                     radius=radius,
                 )
-            elif isinstance(src, SkyCoord):
+            elif isinstance(source_name, SkyCoord):
                 exclusion_region = CircleSkyRegion(
-                    center=src.galactic,
+                    center=source_name.galactic,
                     radius=radius,
                 )
             self.exclusion_regions.append(exclusion_region)
@@ -360,7 +357,7 @@ class FermiAnalysis(Events, EnergyMatrix):
 
     def create_exclusion_mask(self):
 
-        excluded_geom = self.countsmap.geom.copy()
+        excluded_geom = self.counts_map.geom.copy()
 
         if len(self.exclusion_regions) == 0:
             self.log.info("Creating empty/dummy exclusion region")
@@ -378,13 +375,13 @@ class FermiAnalysis(Events, EnergyMatrix):
         try:
             mask_safe = self.exclusion_mask
         except:
-            mask_bool = np.zeros(self.countsmap.geom.data_shape).astype("bool")
-            mask_safe = Map.from_geom(self.countsmap.geom, mask_bool)
+            mask_bool = np.zeros(self.counts_map.geom.data_shape).astype("bool")
+            mask_safe = Map.from_geom(self.counts_map.geom, mask_bool)
             mask_safe.data = np.asarray(mask_safe.data == 0, dtype=bool)
 
         self.dataset = MapDataset(
             models=Models(self.SkyModel.list_sources),
-            counts=self.countsmap,
+            counts=self.counts_map,
             exposure=self.exposure_interp,
             psf=self.psf,
             edisp=EDispKernelMap.from_edisp_kernel(self.edisp_interp_kernel),
@@ -393,7 +390,7 @@ class FermiAnalysis(Events, EnergyMatrix):
         )
 
     def gen_analysis(
-        self, targetname, ebl_absorption=None, redshift=None, ebl_model=None
+        self, target_name, ebl_absorption=None, redshift=None, ebl_model=None
     ):
 
         self.read_irfs()
@@ -410,9 +407,9 @@ class FermiAnalysis(Events, EnergyMatrix):
 
         self.set_edisp_interpolator()
         self.exposure_interp = self.exposure.interp_to_geom(
-            self.countsmap.geom.as_energy_true
+            self.counts_map.geom.as_energy_true
         )
-        self.set_targetname(targetname)
+        self.set_target_name(target_name)
 
         if ebl_absorption != None:
             self.set_ebl_absorption_from_model(ebl_absorption)
@@ -433,7 +430,7 @@ class FermiAnalysis(Events, EnergyMatrix):
     def link_parameters_to_analysis(self, Analysis):
 
         self.log.info("Linking parameters to target Analysis object")
-        NewDatasetModel = []
+        New_Dataset_Model = []
 
         for k, model in enumerate(Analysis.dataset.models):
             if "fermi-diffuse-iso" in model.name:
@@ -444,9 +441,9 @@ class FermiAnalysis(Events, EnergyMatrix):
                     k
                 ].spectral_model.model2
 
-                NewDatasetModel.append(self.dataset.models[k])
+                New_Dataset_Model.append(self.dataset.models[k])
             else:
                 # Link the entire model
-                NewDatasetModel.append(Analysis.dataset.models[k])
+                New_Dataset_Model.append(Analysis.dataset.models[k])
 
-        self.dataset.models = DatasetModels(NewDatasetModel)
+        self.dataset.models = DatasetModels(New_Dataset_Model)

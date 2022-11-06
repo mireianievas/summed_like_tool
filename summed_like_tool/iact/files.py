@@ -2,9 +2,9 @@ import logging
 
 
 class Files(object):
-    def __init__(self, dl3_path, srcmodel):
+    def __init__(self, dl3_path, source_model):
         self.dl3_path = dl3_path
-        self.model = srcmodel
+        self.model = source_model
         self._set_logging()
 
     def _set_logging(self):

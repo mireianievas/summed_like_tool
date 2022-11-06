@@ -1,4 +1,5 @@
-from astropy.io import fits as pyfits
+from astropy.io import fits
+import numpy as np
 import io
 import gzip
 
@@ -6,13 +7,13 @@ import gzip
 def read_fits_gz(f):
     ### Robuts fits.gz reader
     try:
-        fc = pyfits.open(f)
+        fc = fits.open(f)
     except OSError:
         # some gzipped fits files seem to have issues in astropy/ds9, therefore we first decompress.
         with gzip.open(f, "rb") as _f:
-            gzbytes = _f.read()
-            iobytes = io.BytesIO(gzip.decompress(gzbytes))
-            fc = pyfits.open(iobytes)  # ,ignore_missing_simple=True)
+            gz_bytes = _f.read()
+            io_bytes = io.BytesIO(gzip.decompress(gz_bytes))
+            fc = fits.open(io_bytes)  # ,ignore_missing_simple=True)
 
     return fc
 
@@ -27,10 +28,10 @@ def closest_in_array(array, value, shift=0):
     return (array[loc], loc)
 
 
-def slice_in_mapaxis(mapaxis, valuemin, valuemax, padding=0):
+def slice_in_mapaxis(mapaxis, value_min, value_max, padding=0):
     edges = mapaxis.edges
-    loc1 = closest_in_array(edges, valumin, -padding)[1]
-    loc2 = closest_in_array(edges, valumax, padding)[1]
+    loc1 = closest_in_array(edges, value_min, -padding)[1]
+    loc2 = closest_in_array(edges, value_max, padding)[1]
 
     for loc in range(loc1, loc2 + 1, 1):
         try:

@@ -1,21 +1,24 @@
 import os
 import warnings
 import numpy as np
-import matplotlib.pyplot as plt
+
 import astropy.units as u
-from astropy.units import Quantity
 from astropy.table import Table
-from gammapy.modeling import Fit
-from gammapy.datasets import Datasets, SpectrumDataset, SpectrumDatasetOnOff
+from astropy.units import Quantity
+
+from gammapy.datasets import Datasets
 from gammapy.estimators import FluxPointsEstimator
-from gammapy.maps import Map
-from ..utils.various import closest_in_array
+from gammapy.irf import EDispKernel
+from gammapy.maps import Map, MapAxis
+from gammapy.modeling import Fit
+
+from ..utils.various import slice_in_mapaxis #, closest_in_array
 
 
 class FitMaker(object):
-    def __init__(self, analyses, *args, **kwargs):
+    def __init__(self, analyses): #, args=None, kwargs=None
         self.set_analysis_objects(analyses)
-        self.setup_fit(*args, **kwargs)
+        self.setup_fit()
 
     def set_analysis_objects(self, analyses):
         self.analyses = analyses
@@ -28,13 +31,13 @@ class FitMaker(object):
             # if k==0: self.datasets.append(d)
             # else:    self.datasets.extend(d)
 
-    def set_energy_mask(self, dataset, emin=100 * u.MeV, emax=30 * u.TeV):
+    def set_energy_mask(self, dataset, en_min=100 * u.MeV, en_max=30 * u.TeV):
         coords = dataset.counts.geom.get_coord()
-        mask_energy = (coords["energy"] >= emin) * (coords["energy"] <= emax)
+        mask_energy = (coords["energy"] >= en_min) * (coords["energy"] <= en_max)
         dataset.mask_fit = Map.from_geom(geom=dataset.counts.geom, data=mask_energy)
 
-    def setup_fit(self, *args, **kwargs):
-        self.fit = Fit(*args, **kwargs)
+    def setup_fit(self): #, *args, **kwargs
+        self.fit = Fit()
 
     def global_fit(self, datasets=None):
         warnings.filterwarnings("ignore")
@@ -50,28 +53,28 @@ class FitMaker(object):
                 axes=[energy_true, energy_reco], data=data
             )
 
-        fitBin = Fit(*args, **kwargs)
-        result = self.fitBin.run(datasets=self.datasets)
+        self.fitBin = Fit()
+        self.result = self.fitBin.run(datasets=self.datasets)
         warnings.filterwarnings("default")
         return (self.fitBin, self.result)
 
-    def set_target_source(self, targetname, dataset=None):
+    def set_target_source(self, target_name, dataset=None):
         if dataset != None:
             dataset = [dataset]
         else:
             dataset = self.datasets
         for d in dataset:
             for S in dataset.models:
-                if S.name == targetname:
+                if S.name == target_name:
                     self.target_model = S
                     return None
 
     def print_fit_result(self):
         print(self.result)
 
-    def print_parameters(self, first=True, full=False):
+    def print_parameters(self, only_first_dataset=True, full_datasets=False):
 
-        if first:
+        if only_first_dataset:
             datasets = [
                 self.datasets[0],
             ]
@@ -79,7 +82,7 @@ class FitMaker(object):
             datasets = self.datasets
 
         for d in datasets:
-            if full:
+            if full_datasets:
                 d.models.to_parameters_table().pprint_all()
             else:
                 d.models.to_parameters_table().pprint()
@@ -94,26 +97,26 @@ class SpectralAnalysis(FitMaker):
 
         self.lat_ebin = Table.read(lat_ebin_file, format="ascii")
         self.lat_bute = Table.read(lat_bute_file, format="ascii")
-        self.ebin_edges = (
+        self.energy_bin_edges = (
             np.append(self.lat_ebin["col2"][0], self.lat_ebin["col3"]) * u.MeV
         )
 
-    def get_spectral_points(self, ebin_edges=None, targetname=None, datasets=None):
+    def get_spectral_points(self, energy_bin_edges=None, target_name=None, datasets=None):
         warnings.filterwarnings("ignore")
 
         if datasets == None:
             datasets = self.datasets
 
-        if ebin_edges != None:
-            self.ebin_edges = ebin_edges
+        if energy_bin_edges != None:
+            self.energy_bin_edges = energy_bin_edges
 
-        if targetname == None:
-            targetname = self.analyses[0].targetname
+        if target_name == None:
+            target_name = self.analyses[0].target_name
             # self.set_target_source(self.analyses[0],dataset=self.analyses[0].dataset)
-            # self.set_target_source(targetname)
+            # self.set_target_source(target_name)
 
         fpe = FluxPointsEstimator(
-            energy_edges=self.ebin_edges,
+            energy_edges=self.energy_bin_edges,
             source=self.target_model.name,
             n_sigma_ul=2,
             selection_optional="all",
@@ -122,14 +125,17 @@ class SpectralAnalysis(FitMaker):
         self.flux_points = fpe.run(datasets=datasets)
         warnings.filterwarnings("default")
 
-    def prepare_energy_bins(self, ebins_edges=None):
+    def prepare_energy_bins(self, dataset, energy_bin_edges=None):
         energy_true_axis = dataset.edisp_interp_kernel.axes[0]
 
-        for k, ebin_lo in ebin_edges[0:-1]:
-            ebin_hi = ebins_edges[k + 1]
-            energy_true_slice = MapAxis.from_energy_edges(np.append(ebin_lo, ebin_hi))
+        for k, ebin_lo in energy_bin_edges[0:-1]:
+            ebin_hi = energy_bin_edges[k + 1]
+            energy_true_slice = MapAxis.from_energy_edges(
+                np.append(ebin_lo, ebin_hi)
+            )
 
             for dataset in self.datasets:
+                ## Explanation/Description required
                 energy_reco_axis_slice, jmin, jmax = slice_in_mapaxis(
                     energy_reco_axis, ebin_lo, ebin_hi, 2
                 )
@@ -147,7 +153,7 @@ class SpectralAnalysis(FitMaker):
 
     def plot_spectrum(self, ax=None, kwargs_fp=None, kwargs_model=None):
 
-        energy_range = Quantity([self.ebin_edges[0], self.ebin_edges[-1]])
+        energy_range = Quantity([self.energy_bin_edges[0], self.energy_bin_edges[-1]])
 
         if kwargs_fp is None:
             kwargs_fp = {
@@ -177,11 +183,11 @@ class SpectralAnalysis(FitMaker):
     def plot_spectrum_enrico(
         self, ax=None, kwargs_fp=None, kwargs_model=None, kwargs_model_err=None
     ):
-        ymean = self.lat_bute["col2"]
-        yerrs = self.lat_bute["col3"]
+        y_mean = self.lat_bute["col2"]
+        y_errs = self.lat_bute["col3"]
 
-        yerrp = ymean + yerrs
-        yerrn = ymean - yerrs  # 10**(2*np.log10(ymean)-np.log10(yerrp))
+        y_errp = y_mean + y_errs
+        y_errn = y_mean - y_errs  # 10**(2*np.log10(y_mean)-np.log10(y_errp))
 
         if kwargs_fp is None:
             kwargs_fp = {
@@ -206,19 +212,19 @@ class SpectralAnalysis(FitMaker):
             kwargs_model_err = kwargs_model.copy()
             kwargs_model_err.pop("mew", None)
             kwargs_model_err["alpha"] = 0.2
-            kwargs_model_err["label"] = "enrico/fermitools"
+            kwargs_model_err["label"] = "Enrico/Fermitools"
 
         # Best-Fit model
         ax.plot(
             self.lat_bute["col1"] * u.MeV,
-            ymean * u.Unit("erg/(cm2*s)"),
+            y_mean * u.Unit("erg/(cm2*s)"),
             **kwargs_model,
         )
         # confidence band
         ax.fill_between(
             x=self.lat_bute["col1"] * u.MeV,
-            y1=yerrn * u.Unit("erg/(cm2*s)"),
-            y2=yerrp * u.Unit("erg/(cm2*s)"),
+            y1=y_errn * u.Unit("erg/(cm2*s)"),
+            y2=y_errp * u.Unit("erg/(cm2*s)"),
             **kwargs_model_err,
         )
 
@@ -248,10 +254,10 @@ class SpectralAnalysis(FitMaker):
 
         return ax
 
-    def plot_spectrum_fold(self, ax=None, foldfile=None, kwargs=None):
+    def plot_spectrum_fold(self, ax=None, fold_file=None, kwargs=None):
         import uproot
 
-        if not os.path.exists(foldfile):
+        if not os.path.exists(fold_file):
             return None
 
         if kwargs is None:
@@ -267,23 +273,23 @@ class SpectralAnalysis(FitMaker):
                 "alpha": 1,
             }
 
-        fold = uproot.open(foldfile)
+        fold = uproot.open(fold_file)
         sed = fold["observed_sed"].tojson()
 
         x = sed["fX"]
         y = sed["fY"]
-        xerrlow = sed["fEXlow"]
-        xerrhigh = sed["fEXhigh"]
-        yerrlow = sed["fEYlow"]
-        yerrhigh = sed["fEYhigh"]
+        x_err_low = sed["fEXlow"]
+        x_err_high = sed["fEXhigh"]
+        y_err_low = sed["fEYlow"]
+        y_err_high = sed["fEYhigh"]
 
         self.ax.errorbar(
             x=x * u.GeV,
             y=y * u.Unit("TeV/(cm2 * s)"),
-            xerr=[xerrlow * u.GeV, xerrhigh * u.GeV],
+            xerr=[x_err_low * u.GeV, x_err_high * u.GeV],
             yerr=[
-                yerrlow * u.Unit("TeV/(cm2 * s)"),
-                yerrhigh * u.Unit("TeV/(cm2 * s)"),
+                y_err_low * u.Unit("TeV/(cm2 * s)"),
+                y_err_high * u.Unit("TeV/(cm2 * s)"),
             ],
             **kwargs,
         )
