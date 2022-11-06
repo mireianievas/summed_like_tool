@@ -16,9 +16,9 @@ from ..utils.various import slice_in_mapaxis #, closest_in_array
 
 
 class FitMaker(object):
-    def __init__(self, analyses): #, args=None, kwargs=None
+    def __init__(self, analyses, *args, **kwargs):
         self.set_analysis_objects(analyses)
-        self.setup_fit()
+        self.setup_fit(*args, **kwargs)
 
     def set_analysis_objects(self, analyses):
         self.analyses = analyses
@@ -36,8 +36,8 @@ class FitMaker(object):
         mask_energy = (coords["energy"] >= en_min) * (coords["energy"] <= en_max)
         dataset.mask_fit = Map.from_geom(geom=dataset.counts.geom, data=mask_energy)
 
-    def setup_fit(self): #, *args, **kwargs
-        self.fit = Fit()
+    def setup_fit(self, *args, **kwargs):
+        self.fit = Fit(*args, **kwargs)
 
     def global_fit(self, datasets=None):
         warnings.filterwarnings("ignore")
@@ -53,7 +53,7 @@ class FitMaker(object):
                 axes=[energy_true, energy_reco], data=data
             )
 
-        self.fitBin = Fit()
+        self.fitBin = Fit(*args, **kwargs)
         self.result = self.fitBin.run(datasets=self.datasets)
         warnings.filterwarnings("default")
         return (self.fitBin, self.result)
