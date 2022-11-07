@@ -196,12 +196,13 @@ class SpectralAnalysis(FitMaker):
 
         return ax
 
-    def plot_residuals(self, ax=None, method="diff"):
+    def plot_residuals(self, ax=None, method="diff", kwargs_res=None):
 
         self.flux_points_dataset = FluxPointsDataset(
             data=self.flux_points, models=SkyModel(spectral_model=self.target_model.spectral_model)
         )
-        self.flux_points_dataset.plot_residuals(ax=ax, method=method)
+
+        self.flux_points_dataset.plot_residuals(ax=ax, method=method, **kwargs_res)
 
         return ax
 
