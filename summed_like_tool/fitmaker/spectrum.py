@@ -11,6 +11,7 @@ from gammapy.estimators import FluxPointsEstimator
 from gammapy.irf import EDispKernel
 from gammapy.maps import Map, MapAxis
 from gammapy.modeling import Fit
+from gammapy.modeling.models import SkyModel
 
 from ..utils.various import slice_in_mapaxis #, closest_in_array
 
@@ -198,7 +199,7 @@ class SpectralAnalysis(FitMaker):
     def plot_residuals(self, ax=None, method="diff"):
 
         self.flux_points_dataset = FluxPointsDataset(
-            data=self.flux_points, model=self.target_model.spectral_model
+            data=self.flux_points, models=SkyModel(spectral_model=self.target_model.spectral_model)
         )
         self.flux_points_dataset.plot_residuals(ax=ax, method=method)
 
