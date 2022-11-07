@@ -196,12 +196,13 @@ class SpectralAnalysis(FitMaker):
             kwargs_model = {
                 "sed_type": "e2dnde",
                 "color": "gray",
-                "label": "Best fit model",
             }
 
         if is_intrinsic:
             spec = self.target_model.spectral_model.model1
-            kwargs_model["label"] = "Best fit intrinsic model - EBL deabsorbed"
+            if "label" not in kwargs_model.keys():
+                kwargs_model["label"] = "Best fit intrinsic model - EBL deabsorbed"
+            spec.plot(ax=ax, energy_bounds=energy_range, **kwargs_model)
         else:
             spec = self.target_model.spectral_model
             spec.evaluate_error(energy_range)
@@ -212,7 +213,7 @@ class SpectralAnalysis(FitMaker):
             spec.plot_error(
                 ax=ax, energy_bounds=energy_range, **kwargs_model_err
             )
-        spec.plot(ax=ax, energy_bounds=energy_range, **kwargs_model)
+            spec.plot(ax=ax, energy_bounds=energy_range, **kwargs_model)
 
         return ax
 
@@ -226,14 +227,14 @@ class SpectralAnalysis(FitMaker):
 
         return ax
 
-    def plot_ts_profiles(self, ax=None, kwargs_ts=None):
+    def plot_ts_profiles(self, ax=None, add_cbar=True, kwargs_ts=None):
 
         if kwargs_ts is None:
             kwargs_ts = {
                 "sed_type": "e2dnde",
                 "color": "darkorange",
             }
-        self.flux_points.plot_ts_profiles(ax=ax, **kwargs_ts)
+        self.flux_points.plot_ts_profiles(ax=ax, add_cbar=add_cbar, **kwargs_ts)
         ## add x_lim for energy bounds?
 
         return ax
