@@ -167,7 +167,7 @@ class SpectralAnalysis(FitMaker):
 
         return ax
 
-    def plot_spectrum_model(self, ax=ax, is_intrinsic=False, kwargs_model=None):
+    def plot_spectrum_model(self, ax=None, is_intrinsic=False, kwargs_model=None):
 
         energy_range = Quantity([self.energy_bin_edges[0], self.energy_bin_edges[-1]])
 
@@ -195,7 +195,7 @@ class SpectralAnalysis(FitMaker):
 
         return ax
 
-    def plot_residuals(self, ax=ax, method="diff"):
+    def plot_residuals(self, ax=None, method="diff"):
 
         self.flux_points_dataset = FluxPointsDataset(
             data=self.flux_points, model=self.target_model.spectral_model
