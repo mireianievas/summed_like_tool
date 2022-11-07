@@ -47,6 +47,26 @@ class FitMaker(object):
         self.result = self.fit.run(datasets=datasets)
         warnings.filterwarnings("default")
 
+    def plot_parameter_stat_profile(self, datasets, parameter, ax=None):
+        total_stat = self.result.total_stat
+
+        parameter.scan_n_values = 20
+
+        profile = self.fit.stat_profile(datasets=datasets, parameter=parameter)
+
+        ax.plot(
+            profile[f"{parameter.name}_scan"],
+            profile["stat_scan"] - total_stat
+        )
+        ax.set_xlabel(f"{parameter.unit}")
+        ax.set_ylabel("Delta TS")
+        ax.set_title(
+            f"{parameter.name}: {parameter.value:.2e} +/- {parameter.error:.2e}" +
+            f"\n{parameter.value:.2e}+/- {parameter.error/parameter.value:.2f}"
+        )
+
+        return ax
+
     def fit_energy_bin(self, energy_true, energy_reco, data):
         warnings.filterwarnings("ignore")
         for dataset in self.datasets:
