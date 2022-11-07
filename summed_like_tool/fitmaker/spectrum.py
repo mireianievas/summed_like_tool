@@ -6,11 +6,12 @@ import astropy.units as u
 from astropy.table import Table
 from astropy.units import Quantity
 
-from gammapy.datasets import Datasets
+from gammapy.datasets import Datasets, FluxPointsDataset
 from gammapy.estimators import FluxPointsEstimator
 from gammapy.irf import EDispKernel
 from gammapy.maps import Map, MapAxis
 from gammapy.modeling import Fit
+from gammapy.modeling.models import SkyModel
 
 from ..utils.various import slice_in_mapaxis #, closest_in_array
 
@@ -151,33 +152,77 @@ class SpectralAnalysis(FitMaker):
 
             self.fit_energy_bin()
 
-    def plot_spectrum(self, ax=None, kwargs_fp=None, kwargs_model=None):
+    def plot_spectrum_fp(self, ax=None, kwargs_fp=None):
 
         energy_range = Quantity([self.energy_bin_edges[0], self.energy_bin_edges[-1]])
 
         if kwargs_fp is None:
             kwargs_fp = {
+                "sed_type": "e2dnde",
                 "color": "black",
                 "mfc": "gray",
                 "marker": "D",
                 "label": "Flux points",
             }
+        self.flux_points.plot(ax=ax, **kwargs_fp)
+
+        return ax
+
+    def plot_spectrum_model(self, ax=None, is_intrinsic=False, kwargs_model=None):
+
+        energy_range = Quantity([self.energy_bin_edges[0], self.energy_bin_edges[-1]])
+
         if kwargs_model is None:
             kwargs_model = {
+                "sed_type": "e2dnde",
                 "color": "gray",
                 "label": "Best fit model",
             }
-        self.flux_points.plot(ax=ax, sed_type="e2dnde", **kwargs_fp)
+
+        if is_intrinsic:
+            spec = self.target_model.spectral_model.model1
+            kwargs_model["label"] = "Best fit intrinsic model - EBL deabsorbed"
+        else:
+            spec = self.target_model.spectral_model
+            spec.evaluate_error(energy_range)
+
+            kwargs_model_err = kwargs_model.copy()
+            kwargs_model_err.pop("label", None)
+
+            spec.plot_error(
+                ax=ax, energy_bounds=energy_range, **kwargs_model_err
+            )
+        spec.plot(ax=ax, energy_bounds=energy_range, **kwargs_model)
+
+        return ax
+
+    def plot_residuals(self, ax=None, method="diff", kwargs_res=None):
+
+        self.flux_points_dataset = FluxPointsDataset(
+            data=self.flux_points, models=SkyModel(spectral_model=self.target_model.spectral_model)
+        )
+
+        self.flux_points_dataset.plot_residuals(ax=ax, method=method, **kwargs_res)
+
+        return ax
+
+    def plot_ts_profiles(self, ax=None, kwargs_ts=None):
+
+        if kwargs_ts is None:
+            kwargs_ts = {
+                "sed_type": "e2dnde",
+                "color": "darkorange",
+            }
+        self.flux_points.plot_ts_profiles(ax=ax, **kwargs_ts)
+        ## add x_lim for energy bounds?
+
+        return ax
+
+    def plot_model_covariance_correlation(self, ax=None):
 
         spec = self.target_model.spectral_model
-        spec.evaluate_error(energy_range)
-        spec.plot(ax=ax, energy_bounds=energy_range, sed_type="e2dnde", **kwargs_model)
+        spec.covariance.plot_correlation(ax=ax)
 
-        kwargs_model_err = kwargs_model.copy()
-        kwargs_model_err.pop("label", None)
-        spec.plot_error(
-            ax=ax, energy_bounds=energy_range, sed_type="e2dnde", **kwargs_model_err
-        )
         return ax
 
     def plot_spectrum_enrico(
