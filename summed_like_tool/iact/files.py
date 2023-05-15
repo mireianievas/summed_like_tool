@@ -1,9 +1,10 @@
 import logging
-
+from os.path import dirname
 
 class Files(object):
     def __init__(self, dl3_path, source_model):
         self.dl3_path = dl3_path
+        self.dl3_dir  = dirname(dl3_path)
         self.model = source_model
         self._set_logging()
 

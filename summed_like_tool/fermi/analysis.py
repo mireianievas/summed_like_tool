@@ -156,7 +156,6 @@ class Events(EnergyAxes):
         )
 
     def plot_counts_map(self, ax=None, kwargs=None):
-
         percentiles = np.percentile(
             self.counts_map.sum_over_axes().smooth(1).data, [10, 99.9]
         )
@@ -165,7 +164,7 @@ class Events(EnergyAxes):
                 "cmap": new_viridis(),
             }
 
-        self.counts_map.sum_over_axes().smooth(1.5).plot(
+        ax = self.counts_map.sum_over_axes().smooth(1.5).plot(
             ax=ax,
             stretch="sqrt",
             vmin=percentiles[0],

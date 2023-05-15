@@ -20,14 +20,13 @@ from gammapy.makers import (
     WobbleRegionsFinder,
     ReflectedRegionsBackgroundMaker,
 )
-from gammapy.maps import WcsGeom, MapAxis, RegionGeom
+from gammapy.maps import Map, WcsGeom, MapAxis, RegionGeom
 from gammapy.modeling import Fit
 from gammapy.modeling.models import SkyModel, PowerLawSpectralModel
 from gammapy.visualization import plot_spectrum_datasets_off_regions
 
 from .files import Files
 from ..utils.datastore import make_obs_hdu_index
-
 
 class InstrumentResponse(Files):
     pass
@@ -39,7 +38,7 @@ class Observations(Files):
         try:
             if overwrite:
                 raise OSError
-            self.datastore = DataStore.from_dir(self.dl3_path)
+            self.datastore = DataStore.from_dir(self.dl3_dir)
         except OSError:
             self.log.warning(
                 "obs/hdu index files not found, creating them from {}".format(
@@ -47,7 +46,7 @@ class Observations(Files):
                 )
             )
             make_obs_hdu_index(self.dl3_path)
-            self.datastore = DataStore.from_dir(self.dl3_path)
+            self.datastore = DataStore.from_dir(self.dl3_dir)
 
     def get_target_name(self):
         self.target_name = np.unique(self.datastore.obs_table["OBJECT"])[0]
@@ -58,12 +57,28 @@ class Observations(Files):
         self.log.info("The source is {}".format(self.target_name))
 
     def get_observations(self):
+        hdu_extensions = np.unique(self.datastore.hdu_table['HDU_NAME'])
+        if 'RAD_MAX' in hdu_extensions:
+            self.fixed_radmax = False
+        else:
+            self.fixed_radmax = True
+            
+        
         self.obs_list = self.datastore.obs_table["OBS_ID"].data
-        self.observations_total = self.datastore.get_observations(
-            self.obs_list,
-            required_irf=["aeff", "edisp", "rad_max"],
-            skip_missing=False,
-        )
+        if self.fixed_radmax:
+            self.observations_total = self.datastore.get_observations(
+                self.obs_list,
+                required_irf=["aeff", "edisp"],
+                skip_missing=False,
+            )
+            self.radmax = self.observations_total[0].rad_max.data.flatten()[0]*u.deg
+
+        else:
+            self.observations_total = self.datastore.get_observations(
+                self.obs_list,
+                required_irf=["aeff", "edisp", "rad_max"],
+                skip_missing=False,
+            )
 
 
 class EnergyAxes(Files):
@@ -83,10 +98,10 @@ class EnergyAxes(Files):
             reco_energy_edges = en_edges
             true_energy_edges = en_edges
 
-        self.energy_axis = MapAxis.from_energy_edges(reco_energy_edges)
-        self.energy_axis_true = MapAxis.from_energy_edges(true_energy_edges).copy(
-            name="energy_true"
-        )
+        self.energy_axis = MapAxis.from_energy_edges(
+            reco_energy_edges)
+        self.energy_axis_true = MapAxis.from_energy_edges(
+            true_energy_edges).copy(name="energy_true")
 
 
 class Analysis1D(Observations, EnergyAxes):
@@ -101,24 +116,41 @@ class Analysis1D(Observations, EnergyAxes):
 
     def set_on_region(self):
         self.log.info("Setting on region and empty dataset template")
-        self.on_region = PointSkyRegion(self.src_pos)
+        if self.fixed_radmax:
+            self.on_region = CircleSkyRegion(self.src_pos,radius=self.radmax)
+        else:
+            self.on_region = PointSkyRegion(self.src_pos)
         ### Hack to allow for Fermi+IACT fit (otherwise pointskyregion.contains returns None)
-        self.on_region.meta = {"include": False}
-        geom = RegionGeom.create(region=self.on_region, axes=[self.energy_axis])
+        #if not self.fixed_radmax:
+        #    self.on_region.meta = {"include": False}
+        
+        self.geom = RegionGeom.create(region=self.on_region, 
+                                 axes=[self.energy_axis])
         self.dataset_template = SpectrumDataset.create(
-            geom=geom, energy_axis_true=self.energy_axis_true
+            geom=self.geom, energy_axis_true=self.energy_axis_true
         )
 
     def run_region_finder(self, n_off_regions=1):
         self.log.info("Setting up region finder")
         self.dataset_maker = SpectrumDatasetMaker(
-            containment_correction=False, selection=["counts", "exposure", "edisp"]
+            containment_correction=False, 
+            selection=["counts", "exposure", "edisp"]
         )
-
-        self.region_finder = WobbleRegionsFinder(n_off_regions=n_off_regions)
-        self.bkg_maker = ReflectedRegionsBackgroundMaker(
-            region_finder=self.region_finder
-        )
+        
+        if self.fixed_radmax:
+            self.region_finder = None
+            self.bkg_maker = ReflectedRegionsBackgroundMaker(
+                min_distance = 15 * u.deg,
+                max_region_number=n_off_regions,
+                min_distance_input = 25*u.deg)
+            
+        else:
+            self.region_finder = WobbleRegionsFinder(
+                n_off_regions=n_off_regions)
+            
+            self.bkg_maker = ReflectedRegionsBackgroundMaker(
+                region_finder=self.region_finder
+            )
 
     def create_safe_mask_min_aeff(
         self,
@@ -185,9 +217,9 @@ class Analysis1D(Observations, EnergyAxes):
 
         self.datasets = Datasets()
         self.counts_off_array = []
+        self.countsmap = Map.create(skydir=self.src_pos, width=3)
 
         for obs in self.observations_total:
-
             try:
                 self.log.info("Run ID {}".format(obs.obs_id))
 
@@ -197,13 +229,15 @@ class Analysis1D(Observations, EnergyAxes):
                     frame="icrs",
                     unit="deg",
                 )
-
-                self.region_finder.run(self.on_region, central_pointing)
-
-                self.region_finder.run(self.on_region, central_pointing)
-
-                if obs.fixed_pointing_info.meta["OBS_MODE"] == "UNDETERMINED":
-                    self.log.warning("OBS_MODE for run {} is UNDETERMINED, wrong offset?".format(obs.obs_id))
+                if not self.fixed_radmax:
+                    self.region_finder.run(self.on_region, central_pointing)
+                
+                if 'OBS_MODE' in obs.fixed_pointing_info.meta:
+                    if obs.fixed_pointing_info.meta["OBS_MODE"] == "UNDETERMINED":
+                        self.log.warning("OBS_MODE for run {} is UNDETERMINED, wrong offset?".format(obs.obs_id))
+                        obs.fixed_pointing_info.meta["OBS_MODE"] = "WOBBLE"
+                else:
+                    #self.log.warning("OBS_MODE for run {} is NOT DEFINED".format(obs.obs_id))
                     obs.fixed_pointing_info.meta["OBS_MODE"] = "WOBBLE"
 
                 dataset = self.dataset_maker.run(
@@ -216,6 +250,7 @@ class Analysis1D(Observations, EnergyAxes):
                 dataset_on_off = self.safe_mask_masker.run(dataset_on_off, obs)
                 self.datasets.append(dataset_on_off)
                 self.counts_off_array.append(counts_off)
+                self.countsmap.fill_events(obs.events)
             except IndexError:
                 self.log.warning(
                     "Error processing run {}, skipping it".format(obs.obs_id)
@@ -225,36 +260,67 @@ class Analysis1D(Observations, EnergyAxes):
         # Check the OFF regions used for calculation of excess
         Fig = plt.figure(figsize=(8, 8))
         ax = self.exclusion_mask.plot()
-        self.on_region.to_pixel(ax.wcs).plot(
-            ax=ax, mfc="None", mew=np.random.random() + 1, marker="D"
-        )
-        plot_spectrum_datasets_off_regions(
-            ax=ax, datasets=self.datasets, linewidth=2, legend=True
-        )
+        if self.fixed_radmax:
+            self.on_region.to_pixel(ax.wcs).plot(
+                ax=ax, lw=np.random.random() + 1,
+            )
+        else:
+            self.on_region.to_pixel(ax.wcs).plot(
+                ax=ax, mfc="None", mew=np.random.random() + 1, marker="D"
+            )
+        plot_spectrum_datasets_off_regions(ax=ax, datasets=self.datasets, 
+                                           linewidth=2, legend=True)
+
         plt.grid()
 
         CS = ["C{}".format(k) for k in range(10)]
         # markers = ["*", "o", "+", "X", "s", "^", "v", "d"]
 
         for k, obs in enumerate(self.observations_total):
-            point = PointSkyRegion(
-                SkyCoord(
-                    obs.obs_info["RA_PNT"],
-                    obs.obs_info["DEC_PNT"],
-                    frame="icrs",
-                    unit="deg",
+            if self.fixed_radmax:
+                point = CircleSkyRegion(
+                    SkyCoord(
+                        obs.obs_info["RA_PNT"],
+                        obs.obs_info["DEC_PNT"],
+                        frame="icrs",
+                        unit="deg",
+                    ),
+                    self.radmax
                 )
-            )
-            point.on_region.meta = {"include": False}
-            point.to_pixel(ax.wcs).plot(
-                ax=ax,
-                mfc="None",
-                ms=np.random.random() * 30 + 10,
-                mew=1.0,
-                mec=CS[k % 10],
-                marker="o",
-            )
+                point.to_pixel(ax.wcs).plot(
+                    ax=ax,
+                    #width=np.random.random() * 30 + 10,
+                    lw=1.0,
+                    color=CS[k % 10],
+                )
+            else: 
+                point = PointSkyRegion(
+                    SkyCoord(
+                        obs.obs_info["RA_PNT"],
+                        obs.obs_info["DEC_PNT"],
+                        frame="icrs",
+                        unit="deg",
+                    )
+                )
+                point.on_region.meta = {"include": False}
+                point.to_pixel(ax.wcs).plot(
+                    ax=ax,
+                    mfc="None",
+                    ms=np.random.random() * 30 + 10,
+                    mew=1.0,
+                    mec=CS[k % 10],
+                    marker="o",
+                )
 
+        return Fig
+    
+    def plot_countsmap(self):
+        Fig = plt.figure(figsize=(5, 5))
+        ax = self.countsmap.plot(cmap="viridis")
+        self.geom.plot_region(ax=ax, 
+            kwargs_point={"color": "k", "marker": "*"})
+        plot_spectrum_datasets_off_regions(ax=ax, 
+                                           datasets=self.datasets)
         return Fig
 
     def plot_excess_ts_livetime(self):

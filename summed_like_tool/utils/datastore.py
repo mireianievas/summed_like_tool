@@ -1,3 +1,4 @@
+from os.path import dirname
 import glob
 from pathlib import Path
 
@@ -7,7 +8,8 @@ from astropy.table import Table
 
 def make_obs_index(path):
     """generate the OBS index for the DL3 files in path"""
-    files = glob.glob(f"{path}/*DL3*.fits")
+    files = glob.glob(f"{path}")
+    filedir = dirname(files[0])
     # empty lists with the columns to be stored
     obs_ids = []
     ra_pnts = []
@@ -45,13 +47,14 @@ def make_obs_index(path):
     obs_table["DEC_PNT"].unit = "deg"
     obs_table["TSTART"].unit = "s"
     obs_table["TSTOP"].unit = "s"
-    obs_file = f"{path}/obs-index.fits.gz"
+    obs_file = f"{filedir}/obs-index.fits.gz"
     obs_table.write(obs_file, overwrite=True)
 
 
 def make_hdu_index(path):
     """generate the HDU index for the DL3 files in path"""
-    files = glob.glob(f"{path}/*DL3*.fits")
+    files = glob.glob(f"{path}")
+    filedir = dirname(files[0])
     # empty lists with the columns to be stored
     obs_ids = []
     hdu_types = []
@@ -76,6 +79,15 @@ def make_hdu_index(path):
         "POINT SPREAD FUNCTION": "psf_table",
         "RAD_MAX": "rad_max_2d",
     }
+    # Test file type (contains RAD_MAX / PSF?)
+    with fits.open(files[0]) as test_file:
+        for htype in list(hdu_types_dict.keys()):
+            try:
+                test_file[htype]
+            except KeyError:
+                del hdu_types_dict[htype]
+                del hdu_classes_dict[htype]
+    
     for _file in files:
         with fits.open(_file) as hdus:
             for hdu in hdus[1:]:
@@ -107,7 +119,7 @@ def make_hdu_index(path):
         },
     )
 
-    hdu_file = f"{path}/hdu-index.fits.gz"
+    hdu_file = f"{filedir}/hdu-index.fits.gz"
     hdu_table.write(hdu_file, overwrite=True)
 
 

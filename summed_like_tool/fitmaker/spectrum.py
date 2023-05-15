@@ -13,6 +13,8 @@ from gammapy.maps import Map, MapAxis
 from gammapy.modeling import Fit
 from gammapy.modeling.models import SkyModel
 
+from ..iact.analysis import Analysis1D
+from ..fermi.analysis import FermiAnalysis
 from ..utils.various import slice_in_mapaxis #, closest_in_array
 
 
@@ -23,7 +25,10 @@ class FitMaker(object):
 
     def set_analysis_objects(self, analyses):
         self.analyses = analyses
-        self.set_datasets([A.dataset for A in self.analyses])
+        dsets = []
+        for A in self.analyses:
+            dsets.append(A.dataset)
+        self.set_datasets(dsets)
 
     def set_datasets(self, datasets):
         self.datasets = Datasets()
@@ -138,7 +143,7 @@ class SpectralAnalysis(FitMaker):
 
         fpe = FluxPointsEstimator(
             energy_edges=self.energy_bin_edges,
-            source=self.target_model.name,
+            source=self.target_model.names[0],
             n_sigma_ul=2,
             selection_optional="all",
         )
@@ -172,7 +177,7 @@ class SpectralAnalysis(FitMaker):
 
             self.fit_energy_bin()
 
-    def plot_spectrum_fp(self, ax=None, kwargs_fp=None):
+    def plot_spectrum_fp(self, ax=None, flux_points=None, kwargs_fp=None):
 
         energy_range = Quantity([self.energy_bin_edges[0], self.energy_bin_edges[-1]])
 
@@ -184,11 +189,13 @@ class SpectralAnalysis(FitMaker):
                 "marker": "D",
                 "label": "Flux points",
             }
-        self.flux_points.plot(ax=ax, **kwargs_fp)
-
+            
+        if flux_points == None:
+            flux_points = self.flux_points
+        flux_points.plot(ax=ax, **kwargs_fp)
         return ax
 
-    def plot_spectrum_model(self, ax=None, is_intrinsic=False, kwargs_model=None):
+    def plot_spectrum_model(self, ax=None, is_intrinsic=False, spec=None, kwargs_model=None):
 
         energy_range = Quantity([self.energy_bin_edges[0], self.energy_bin_edges[-1]])
 
@@ -199,21 +206,27 @@ class SpectralAnalysis(FitMaker):
             }
 
         if is_intrinsic:
-            spec = self.target_model.spectral_model.model1
+            if spec==None:
+                spec = self.target_model.spectral_model.model1
             if "label" not in kwargs_model.keys():
                 kwargs_model["label"] = "Best fit intrinsic model - EBL deabsorbed"
             spec.plot(ax=ax, energy_bounds=energy_range, **kwargs_model)
         else:
-            spec = self.target_model.spectral_model
+            if spec==None:
+                spec = self.target_model.spectral_model
             spec.evaluate_error(energy_range)
 
             kwargs_model_err = kwargs_model.copy()
             kwargs_model_err.pop("label", None)
 
-            spec.plot_error(
+            ax = spec.plot_error(
                 ax=ax, energy_bounds=energy_range, **kwargs_model_err
             )
-            spec.plot(ax=ax, energy_bounds=energy_range, **kwargs_model)
+            
+            if "facecolor" in kwargs_model:
+                kwargs_model.pop("facecolor", None)
+            
+            ax = spec.plot(ax=ax, energy_bounds=energy_range, **kwargs_model)
 
         return ax
 
@@ -254,6 +267,10 @@ class SpectralAnalysis(FitMaker):
 
         y_errp = y_mean + y_errs
         y_errn = y_mean - y_errs  # 10**(2*np.log10(y_mean)-np.log10(y_errp))
+
+        if ax == None:
+            import matplotlib.pyplot as plt
+            ax = plt.gca()
 
         if kwargs_fp is None:
             kwargs_fp = {
@@ -324,6 +341,7 @@ class SpectralAnalysis(FitMaker):
         import uproot
 
         if not os.path.exists(fold_file):
+            print(fold_file)
             return None
 
         if kwargs is None:
@@ -349,7 +367,7 @@ class SpectralAnalysis(FitMaker):
         y_err_low = sed["fEYlow"]
         y_err_high = sed["fEYhigh"]
 
-        self.ax.errorbar(
+        ax.errorbar(
             x=x * u.GeV,
             y=y * u.Unit("TeV/(cm2 * s)"),
             xerr=[x_err_low * u.GeV, x_err_high * u.GeV],
