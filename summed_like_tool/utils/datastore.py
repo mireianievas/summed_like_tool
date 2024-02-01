@@ -88,9 +88,21 @@ def make_hdu_index(path):
                 del hdu_types_dict[htype]
                 del hdu_classes_dict[htype]
     
+    warnings_hdu_types = []
+    warnings_hdu_classes = []
     for _file in files:
         with fits.open(_file) as hdus:
             for hdu in hdus[1:]:
+                if hdu.name not in hdu_types_dict:
+                    if hdu.name not in warnings_hdu_types:
+                        print(f'Warning: {hdu.name} not in hdu_types_dict')
+                        warnings_hdu_types.append(hdu.name)
+                    continue
+                if hdu.name not in hdu_classes_dict:
+                    if hdu.name not in warnings_hdu_classes:
+                        print(f'Warning: {hdu.name} not in hdu_classes_dict')
+                        warnings_hdu_classes.append(hdu.name)
+                    continue
                 obs_ids.append(hdus[1].header["OBS_ID"])
                 hdu_types.append(hdu_types_dict[hdu.name])
                 hdu_classes.append(hdu_classes_dict[hdu.name])

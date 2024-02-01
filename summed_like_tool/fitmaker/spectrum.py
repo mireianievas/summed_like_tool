@@ -324,7 +324,7 @@ class SpectralAnalysis(FitMaker):
                 lat_ebin["col1"] * u.MeV - lat_ebin["col2"] * u.MeV,
                 lat_ebin["col3"] * u.MeV - lat_ebin["col1"] * u.MeV,
             ],
-            yerr=lat_ebin["col5"] * u.Unit("erg/(cm2*s)"),
+            yerr=np.abs(np.asarray(lat_ebin["col5"])) * u.Unit("erg/(cm2*s)"),
             **kwargs_fp,
         )
 
