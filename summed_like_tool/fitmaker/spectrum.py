@@ -143,7 +143,7 @@ class SpectralAnalysis(FitMaker):
 
         fpe = FluxPointsEstimator(
             energy_edges=self.energy_bin_edges,
-            source=self.target_model.names[0],
+            source=self.target_model.name,
             n_sigma_ul=2,
             selection_optional="all",
         )
