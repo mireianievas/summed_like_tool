@@ -65,6 +65,11 @@ class Files(object):
             #'diff_gal_files'
         ]
         for _v in var_list:
+            if _v=='iso_files' and key in ['FRONTBACK', '']:
+                filtered = [K for K in getattr(self, _v) if 'PSF' not in K and 'EDISP' not in K and 'FRONT' not in K and 'BACK' not in K]
+                assert len(filtered) == 1
+                setattr(self, _v.replace("_files", "_f"), filtered[0])
+                continue
             try:
                 filtered = [K for K in getattr(self, _v) if key in K]
                 assert len(filtered) == 1
