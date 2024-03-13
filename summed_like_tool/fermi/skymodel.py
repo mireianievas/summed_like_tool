@@ -34,8 +34,6 @@ class FermiSkyModel(object):
 
     def set_iso_diffuse(self, iso_diffuse):
         self.iso_diffuse = iso_diffuse
-        self.iso_diffuse.spectral_model.model1.parameters[0].min = 0.001
-        self.iso_diffuse.spectral_model.model1.parameters[0].max = 10
         self.iso_diffuse.spectral_model.model2.parameters[0].min = 0
         self.iso_diffuse.spectral_model.model2.parameters[0].max = 10
 

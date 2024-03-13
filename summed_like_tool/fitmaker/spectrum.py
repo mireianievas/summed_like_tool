@@ -145,6 +145,8 @@ class SpectralAnalysis(FitMaker):
             energy_edges=self.energy_bin_edges,
             source=self.target_model.name,
             n_sigma_ul=2,
+            norm_min=1e-6, 
+            norm_max=1e6,
             selection_optional="all",
         )
 
