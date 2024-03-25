@@ -387,6 +387,11 @@ class FermiAnalysis(Events, EnergyMatrix):
             mask_safe=mask_safe,
             name="Fermi-LAT_{}".format(self.unique_name),
         )
+    
+    def set_energy_mask(self, en_min=100 * u.MeV, en_max=1 * u.TeV):
+        coords = self.dataset.counts.geom.get_coord()
+        mask_energy = (coords["energy"] >= en_min) * (coords["energy"] <= en_max)
+        self.dataset.mask_fit = Map.from_geom(geom=self.dataset.counts.geom, data=mask_energy)
 
     def gen_analysis(
         self, target_name, ebl_absorption=None, redshift=None, ebl_model=None
